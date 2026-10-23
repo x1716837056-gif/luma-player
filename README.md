@@ -6,6 +6,8 @@
 
 ## 直接使用 Windows 版本
 
+[下载 Windows x64 免安装 EXE](https://github.com/x1716837056-gif/luma-player/releases/latest/download/Luma-Windows-x64.exe) · [版本与更新说明](https://github.com/x1716837056-gif/luma-player/releases/latest)
+
 在 Windows 10 / 11 x64 上运行 `Luma-Integrated.exe`。这是免安装预览版。
 
 首次启动展示明确标注的示例影音库。点击「添加影片」选择自己的文件夹后，会自动替换示例。也可以到「设置 → 影音库与刮削」清空示例库。
