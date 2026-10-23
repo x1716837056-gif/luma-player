@@ -1,0 +1,314 @@
+{
+  "export_format": "tar.xz",
+  "root_directory": "Luma-source",
+  "original_source_unchanged": true,
+  "included": [
+    {
+      "path": ".gitignore",
+      "bytes": 64,
+      "sha256": "f7a1e8edfd2396a8e246c50354d4b59d43a278c8d93cc48a15ae9a0a2e4d7aa2"
+    },
+    {
+      "path": "HANDOFF.md",
+      "bytes": 27364,
+      "sha256": "a880933cef6e19f837ecdb23b7b50c5397a713db070b4832b3d623354732f65b"
+    },
+    {
+      "path": "LICENSE",
+      "bytes": 1074,
+      "sha256": "85837564856e5ddd827ad015da328b847d4b8bbbd4e218a3e95e6f0d2d3db7ae"
+    },
+    {
+      "path": "README.md",
+      "bytes": 4632,
+      "sha256": "471d15daa41380d4ed9270f164d77331ae7202d878545f916f7dd2a37c1b3121"
+    },
+    {
+      "path": "electron/library.cjs",
+      "bytes": 8013,
+      "sha256": "68b2e228b38b3e10912092cfab7b30de43e509d7f6ee2658bedb50e61664b98a"
+    },
+    {
+      "path": "electron/main.cjs",
+      "bytes": 8192,
+      "sha256": "5f15a718bdc34b7ab927ea36e2743e55fba322b381fe4db2b48d7ec7af1b3d1d"
+    },
+    {
+      "path": "electron/preload.cjs",
+      "bytes": 806,
+      "sha256": "a280a79878866bbad2d0df8415513e8e4b921263b631d9bcbafafe3de0ab62dd"
+    },
+    {
+      "path": "index.html",
+      "bytes": 558,
+      "sha256": "84f179d312b364cf2482766a7ba2a20d185ab7fc72296cbed201958c049fc4e1"
+    },
+    {
+      "path": "package-lock.json",
+      "bytes": 193538,
+      "sha256": "14fb70af0e3bc9f92a3239a8fa66b0fda2b873a93f2f208321ad61ba2fef3a5d"
+    },
+    {
+      "path": "package.json",
+      "bytes": 1462,
+      "sha256": "64f0b20543dcda5b501c723a4bdc59163871e9c3f109ee78183c4eb7ff03f8d0"
+    },
+    {
+      "path": "public/OFL.txt",
+      "bytes": 4388,
+      "sha256": "1c05c68c34f9708415aada51f17e1b0092d2cea709bf4a94cd38114f9e73d7d9"
+    },
+    {
+      "path": "public/luma.ico",
+      "bytes": 14076,
+      "sha256": "5e88a07c8b63383b30659545cb1ff264f64a74456de3e4e2f072cf94488f0e5c"
+    },
+    {
+      "path": "public/luma.png",
+      "bytes": 2116,
+      "sha256": "e89a4e0ce174b1c8118c152b207fd484524668edabd2eaa96ba4f12999b53976"
+    },
+    {
+      "path": "public/luma.svg",
+      "bytes": 420,
+      "sha256": "7edb5b6968849a58885225d4066a2e731187a5c371d24f5ff4b4fe1202f94d87"
+    },
+    {
+      "path": "scripts/download-artwork.py",
+      "bytes": 2155,
+      "sha256": "a5a29b1c636c424937c639b8e206ee82d5ada2989d8075de64546408a41f8b6a"
+    },
+    {
+      "path": "scripts/export-preview.mjs",
+      "bytes": 1846,
+      "sha256": "8b09795998d4116c9d7e76605304e95e9ca5b3f8f679372b83250c04ec78bfda"
+    },
+    {
+      "path": "scripts/smoke-browser.mjs",
+      "bytes": 3943,
+      "sha256": "f6edaf754283f83248411a817765041b80f6792727dbffc4e7634bf9f141b64e"
+    },
+    {
+      "path": "scripts/smoke-native.mjs",
+      "bytes": 4500,
+      "sha256": "8a7edbcb672ca67013773b61d6ad35a4688449db5ba9576f5d8136d2a3029c6b"
+    },
+    {
+      "path": "src/App.tsx",
+      "bytes": 44670,
+      "sha256": "e5f0e5b8b0fcfb067b786b49ff0ffea5272632c370a84938f4c609691a0e75b9"
+    },
+    {
+      "path": "src/data.ts",
+      "bytes": 6216,
+      "sha256": "5a658758cdc076f15535da3b9f06cdebef0931ef32f3234d6d5fab55be49d4bf"
+    },
+    {
+      "path": "src/main.tsx",
+      "bytes": 225,
+      "sha256": "e81aec37c1befe991a35934ed8b90b73e7262a01e4dffae60e1ce87967ff09b4"
+    },
+    {
+      "path": "src/storage.ts",
+      "bytes": 4765,
+      "sha256": "c07e677571bffbffb761f06161e1ca01c18237ae2cdf04b256d3c64497d6ca33"
+    },
+    {
+      "path": "src/styles.css",
+      "bytes": 39993,
+      "sha256": "e8cd4846d08163b41ee68d7eda02a851efa17690e903c9fc7f20581e0cb1d2c8"
+    },
+    {
+      "path": "src/types.ts",
+      "bytes": 1633,
+      "sha256": "17a5fa9ac0c7e4ad8c04a8caaabceb0b1b510db92aefcf4b11c80c61efbd5eb7"
+    },
+    {
+      "path": "tests/library.test.cjs",
+      "bytes": 4422,
+      "sha256": "b8182649de89f11774f2cd92f9f0636219cd19db372da1af0110b361561cc918"
+    },
+    {
+      "path": "tsconfig.json",
+      "bytes": 416,
+      "sha256": "f8b423b41200feb5788529ca6820e1ced96025245672576262589fe9eb412605"
+    },
+    {
+      "path": "vite.config.ts",
+      "bytes": 169,
+      "sha256": "95712fe51011d23607e19f2de4132fbeb23845957927620be77bca7b89a03b0d"
+    }
+  ],
+  "excluded_binary_assets": [
+    {
+      "path": "public/artwork/arrival-bg.jpg",
+      "bytes": 71262,
+      "sha256": "3f068599927d46a063b5f3b730d0408296175c84cb9fbdd00cd47cf81b8f33c9",
+      "role": "sample_artwork_pending_optional_transfer"
+    },
+    {
+      "path": "public/artwork/arrival.jpg",
+      "bytes": 40768,
+      "sha256": "b287776db6a72a41cf482f7642b94a59f9ecf6031e836588b0b7653f31b64eef",
+      "role": "sample_artwork_pending_optional_transfer"
+    },
+    {
+      "path": "public/artwork/batman-bg.jpg",
+      "bytes": 232850,
+      "sha256": "24dd49b1471ae163117a93407943459b104747b025960dd35ca0c733c4349e54",
+      "role": "sample_artwork_pending_optional_transfer"
+    },
+    {
+      "path": "public/artwork/batman.jpg",
+      "bytes": 99386,
+      "sha256": "48540dcfe50866478d07f7b31a959821da35c23d73ffc29cea97a634c69b1f35",
+      "role": "sample_artwork_pending_optional_transfer"
+    },
+    {
+      "path": "public/artwork/bear-bg.jpg",
+      "bytes": 116777,
+      "sha256": "52ce0679abd501da58079aab8638ad4a6cae2c02c3aa19c7a94ea205ce34703c",
+      "role": "sample_artwork_pending_optional_transfer"
+    },
+    {
+      "path": "public/artwork/bear.jpg",
+      "bytes": 108760,
+      "sha256": "ec6bb6986788455bcb450becb7ab1a2b8caebc8a5b561724bf8973313e169bbb",
+      "role": "sample_artwork_pending_optional_transfer"
+    },
+    {
+      "path": "public/artwork/bladerunner-bg.jpg",
+      "bytes": 109381,
+      "sha256": "fc507ef93daf42a02a9ee42ced887decc9b9a4bdacc71f110c158789b9f8a1e9",
+      "role": "sample_artwork_pending_optional_transfer"
+    },
+    {
+      "path": "public/artwork/bladerunner.jpg",
+      "bytes": 86521,
+      "sha256": "3fd88fb520e0662cf9e1090c0a13b6d0f2d5ef31a3aae7859f074020125c8b5d",
+      "role": "sample_artwork_pending_optional_transfer"
+    },
+    {
+      "path": "public/artwork/dune-bg.jpg",
+      "bytes": 120514,
+      "sha256": "1e4123f1eec2afe261db6b7c175da660914b90045bca41189a19494aa542ca2c",
+      "role": "sample_artwork_pending_optional_transfer"
+    },
+    {
+      "path": "public/artwork/dune.jpg",
+      "bytes": 83510,
+      "sha256": "3642bd453bc5b1ddbb0295eaea7e50de750482b79b221ddeb9c1c7e088ebc8b3",
+      "role": "sample_artwork_pending_optional_transfer"
+    },
+    {
+      "path": "public/artwork/dune2-bg.jpg",
+      "bytes": 118367,
+      "sha256": "ef9fc905b6dbdce583d36eefdfebc3fa1d3a7df2fc82a5cff81f1f2a55155b6f",
+      "role": "sample_artwork_pending_optional_transfer"
+    },
+    {
+      "path": "public/artwork/dune2.jpg",
+      "bytes": 96091,
+      "sha256": "7502105e69db50bec86691fff78cb331e036502b105c694e334857490fab3c1b",
+      "role": "sample_artwork_pending_optional_transfer"
+    },
+    {
+      "path": "public/artwork/inception-bg.jpg",
+      "bytes": 251819,
+      "sha256": "ff773224b25795b58d0c3cbfa2cf4419465fd697658bd1a05732b4425b6796db",
+      "role": "sample_artwork_pending_optional_transfer"
+    },
+    {
+      "path": "public/artwork/inception.jpg",
+      "bytes": 130328,
+      "sha256": "2b36dee901a43c004ddf3229c0b5ad7006d70beedf5ce341093e0e1274dce737",
+      "role": "sample_artwork_pending_optional_transfer"
+    },
+    {
+      "path": "public/artwork/interstellar-bg.jpg",
+      "bytes": 82246,
+      "sha256": "2995840c0928ab7f8518894fec6b7f14090ae3388b3f58ed6c2c429e4eacaad5",
+      "role": "sample_artwork_pending_optional_transfer"
+    },
+    {
+      "path": "public/artwork/interstellar.jpg",
+      "bytes": 105718,
+      "sha256": "a62ad121c07d39cbfd78db48fbec00b9ea61254db872da6c9d40cf0f4619f255",
+      "role": "sample_artwork_pending_optional_transfer"
+    },
+    {
+      "path": "public/artwork/lalaland-bg.jpg",
+      "bytes": 127146,
+      "sha256": "f2f968cc79cff823da57eccb4cc4fde30e69b3d0c88351685b49ba9dc5d290f8",
+      "role": "sample_artwork_pending_optional_transfer"
+    },
+    {
+      "path": "public/artwork/lalaland.jpg",
+      "bytes": 55561,
+      "sha256": "75fb807b3834469f7db666a3329d534ad5b3bcc0a088415929b3a4d2754b7db7",
+      "role": "sample_artwork_pending_optional_transfer"
+    },
+    {
+      "path": "public/artwork/oppenheimer-bg.jpg",
+      "bytes": 186392,
+      "sha256": "fdd4efe9f6d093b2ec5c56818629fc6fddf19a9c00a690498e945286352caacb",
+      "role": "sample_artwork_pending_optional_transfer"
+    },
+    {
+      "path": "public/artwork/oppenheimer.jpg",
+      "bytes": 84028,
+      "sha256": "2a95750bc7713cc9187067032b6197af0264dca1bd040d153ac8e63e3619a180",
+      "role": "sample_artwork_pending_optional_transfer"
+    },
+    {
+      "path": "public/artwork/pastlives-bg.jpg",
+      "bytes": 974344,
+      "sha256": "d72655b7e19548dd9068868d2d6ccd525a827f754e45f2c06d269982df7e13dc",
+      "role": "sample_artwork_pending_optional_transfer"
+    },
+    {
+      "path": "public/artwork/pastlives.jpg",
+      "bytes": 84630,
+      "sha256": "808b6848426d50bc5eff492fbcf74653738d435748b6f87d4323fbfc28d16407",
+      "role": "sample_artwork_pending_optional_transfer"
+    },
+    {
+      "path": "public/artwork/severance-bg.jpg",
+      "bytes": 116570,
+      "sha256": "afe0a5f6aacb22b810812538a061c801356efe12f00c41afa654a591f45d2bb3",
+      "role": "sample_artwork_pending_optional_transfer"
+    },
+    {
+      "path": "public/artwork/severance.jpg",
+      "bytes": 58673,
+      "sha256": "c977446f82f03ffae25bde5329f9f406612a47fba358278aa61ffabc22016b08",
+      "role": "sample_artwork_pending_optional_transfer"
+    },
+    {
+      "path": "public/demo.mp4",
+      "bytes": 11053871,
+      "sha256": "b2ded9ae5a20fa36ca8cec49ef923bffb5e1a51d9e8c1f8336273d2fa9d35ff0",
+      "role": "demo_video_omitted"
+    },
+    {
+      "path": "public/luma-chinese.woff2",
+      "bytes": 165916,
+      "sha256": "6fd9d14008e0a287469b9a1bb8801e5fac7fccb19a386ed280c9f7a91e39339d",
+      "role": "font_pending_binary_transfer"
+    }
+  ],
+  "excluded_directories": [
+    "node_modules",
+    "dist",
+    "release",
+    "reference",
+    ".git"
+  ],
+  "notes": [
+    "All application text sources and package-lock.json are included unchanged.",
+    "Original luma.svg, luma.png, luma.ico and OFL.txt are included unchanged.",
+    "Original public font, sample artwork and demo.mp4 are preserved in the cloud but omitted from this first relay archive.",
+    "scripts/export-preview.mjs and native smoke tests require the omitted assets; do not treat missing assets as product regressions.",
+    "No installed dependencies, userData/settings.json or user credentials are exported."
+  ]
+}
