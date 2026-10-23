@@ -2,69 +2,40 @@ const {MpvPlayer}=require('../electron/mpv.cjs');
 const {toolPath,probeMedia}=require('../electron/probe.cjs');
 const path=require('node:path'),fs=require('node:fs/promises'),assert=require('node:assert/strict');
 const delay=ms=>new Promise(r=>setTimeout(r,ms));
-async function until(check){const deadline=Date.now()+10000;while(!await check()){if(Date.now()>deadline)throw new Error('Interface state did not change');await delay(100);}}
+async function until(check){const deadline=Date.now()+10000;while(!await check()){if(Date.now()>deadline)throw new Error('Interface state did not change');await delay(60);}}
 (async()=>{
   const filename=process.argv[2]||path.resolve('public/demo.mp4');
   const technical=await probeMedia(filename),player=new MpvPlayer();
+  const get=property=>player.command(['get_property',property]);
+  const layout=()=>get('user-data/luma-osc/layout');
+  async function point(x,y){const l=await layout();await player.command(['mouse',Math.round(x*l.scale),Math.round(y*l.scale)]);await delay(60);}
+  async function click(id){let l=await layout();for(let i=0;!l.buttons[id]&&id.startsWith('row-')&&l.buttons.next&&i<20;i++){await click('next');l=await layout();}const box=l.buttons[id];assert.ok(box,`Missing control ${id}: ${JSON.stringify(l)}`);await point(box.x+box.w/2,box.y+box.h/2);await player.command(['keypress','MBTN_LEFT']);await delay(120);}
+  async function menuIs(value){await until(async()=>await get('user-data/luma-osc/menu')===value&&(await layout()).kind===value);}
+  async function above(id){const l=await layout(),box=l.buttons[id];assert.ok(l.menu.y+l.menu.h<box.y);const expected=Math.max(12,Math.min(box.x+box.w/2-l.menu.w/2,l.width-l.menu.w-12));assert.ok(Math.abs(l.menu.x-expected)<2);}
+  async function screenshot(name){await player.command(['screenshot-to-file',path.resolve('reference',name),'window']);}
   try {
     await fs.mkdir('reference',{recursive:true});
-    await player.start(toolPath('mpv'),{id:'interface-test',title:process.argv[3]||'Luma · 播放界面',description:'一部关于探索、重逢和勇气的电影。这段简介用于验证播放中的影片资料，可以通过右键随时查看。',genre:['剧情'],director:'测试导演',path:filename,...technical},{mute:true});
-    assert.equal(await player.command(['get_property','user-data/luma-osc/loaded']),true);
-    await player.control('pause',true);await player.control('seek',Math.min(90,technical.technical.durationSeconds/2));await delay(600);
-    const dims=await player.command(['get_property','osd-dimensions']);
-    const dpi=await player.command(['get_property','display-hidpi-scale']);
-    const scale=Math.max(dpi,dims.h/900),W=dims.w/scale,H=dims.h/scale;
-    const x=Math.max(20,(W-760)/2),y=H-166,w=Math.min(760,W-40);
-    async function click(vx,vy){await player.command(['mouse',Math.round(vx*scale),Math.round(vy*scale)]);await delay(150);await player.command(['keypress','MBTN_LEFT']);await delay(200);}
-    await player.command(['script-message','luma-show']);
-    const output=path.resolve('reference',process.argv[4]||'mpv-refined.png');
-    await player.command(['screenshot-to-file',output,'window']);
-    await click(x+w-172,y+34);
-    await player.command(['screenshot-to-file',path.resolve('reference/mpv-speed-menu.png'),'window']);
-    await click(x+w-95,y-268+40+4*34+16);
-    assert.equal(await player.command(['get_property','speed']),1.5);
-    await player.command(['set_property','speed',1]);
+    await player.start(toolPath('mpv'),{id:'interface-test',title:process.argv[3]||'Luma · 播放界面',description:'一部关于探索、重逢和勇气的电影。右键可查看简介，返回只退出当前一层。',genre:['剧情'],director:'测试导演',path:filename,...technical},{mute:true,audioOutput:'null'});
+    assert.equal(await get('user-data/luma-osc/loaded'),true);
+    await player.control('pause',true);await player.control('seek',Math.min(90,technical.technical.durationSeconds/2));await delay(400);
+    await screenshot(process.argv[4]||'mpv-refined.png');
+    const sizes=(await layout()).buttons;
+    for(const id of ['speed','audio','subtitles','fullscreen'])assert.deepEqual([sizes[id].w,sizes[id].h],[40,40]);
+    await click('speed');await menuIs('speed');await above('speed');await screenshot('mpv-speed-menu.png');await click('row-5');assert.equal(await get('speed'),1.5);await player.command(['set_property','speed',1]);
     const audio=player.state.tracks.filter(t=>t.type==='audio'),subs=player.state.tracks.filter(t=>t.type==='sub');
-    const sid=await player.command(['get_property','sid']);
-    await click(x+w-125,y+34);
-    await until(async()=>await player.command(['get_property','user-data/luma-osc/menu'])==='audio');
-    await player.command(['screenshot-to-file',path.resolve('reference/mpv-audio-menu.png'),'window']);
-    const audioRows=Math.max(1,audio.length),audioHeight=audioRows*34+48;
-    if(audio.length){await click(x+w-150,y-audioHeight-16+40+(audio.length-1)*34+16);assert.equal(await player.command(['get_property','aid']),audio.at(-1).id);}
-    else await player.command(['keypress','ESC']);
-    assert.equal(await player.command(['get_property','sid']),sid);
-    const aid=await player.command(['get_property','aid']);
-    await click(x+w-79,y+34);
-    await until(async()=>await player.command(['get_property','user-data/luma-osc/menu'])==='subtitles');
-    await player.command(['screenshot-to-file',path.resolve('reference/mpv-subtitle-menu.png'),'window']);
-    const subtitleHeight=(subs.length+1)*34+48;
-    await click(x+w-150,y-subtitleHeight-16+40+subs.length*34+16);
-    assert.equal(await player.command(['get_property','sid']),subs.length?subs.at(-1).id:false);
-    assert.equal(await player.command(['get_property','aid']),aid);
-    const cx=W/2,cy=H/3,bx=Math.max(12,Math.min(cx,W-310-12)),by=Math.max(12,Math.min(cy,H-150-12));
-    await player.command(['mouse',Math.round(cx*scale),Math.round(cy*scale)]);await player.command(['keypress','MBTN_RIGHT']);await delay(200);
-    await until(async()=>await player.command(['get_property','user-data/luma-osc/menu'])==='context');
-    await click(bx+100,by+56);
-    await until(async()=>await player.command(['get_property','user-data/luma-osc/menu'])==='overview');
-    await player.command(['screenshot-to-file',path.resolve('reference/mpv-overview.png'),'window']);
-    await player.command(['keypress','ESC']);
-    await player.command(['mouse',Math.round(cx*scale),Math.round(cy*scale)]);await player.command(['keypress','MBTN_RIGHT']);await delay(200);await click(bx+100,by+90);
-    await until(async()=>await player.command(['get_property','user-data/luma-osc/menu'])==='source');
-    await player.command(['screenshot-to-file',path.resolve('reference/mpv-source-info.png'),'window']);
-    await player.command(['keypress','ESC']);
-    console.log('PASS: independent audio/subtitle menus and playback right-click synopsis/source information');
-    await click(x+w/2,y+34);await until(()=>!player.state.paused);
-    await player.command(['mouse',Math.round(W/2*scale),Math.round(H/2*scale)]);
-    await until(async()=>await player.command(['get_property','user-data/luma-osc/visible'])===false);
-    await player.control('pause',true);await delay(300);
-    await click(x+24+(w-48)*.6,y+80);
-    const clickedRatio=(Math.round((x+24+(w-48)*.6)*scale)/scale-x-24)/(w-48);
-    const playerDuration=await player.command(['get_property','duration']);
-    await until(()=>Math.abs(player.state.position-playerDuration*clickedRatio)<1);
-    await click(x+w-35,y+34);
-    await until(async()=>await player.command(['get_property','fullscreen'])===true);
-    await player.command(['keypress','ESC']);
-    await until(async()=>await player.command(['get_property','fullscreen'])===false);
-    console.log('PASS: real frame, custom Lua interface, speed selection, play/pause, seek, auto-hide and fullscreen',JSON.stringify({codec:technical.technical.videoCodec,width:technical.technical.width,height:technical.technical.height}));
+    const sid=await get('sid');await click('audio');await menuIs('audio');await above('audio');await screenshot('mpv-audio-menu.png');
+    if(audio.length){await click('row-'+audio.length);await until(async()=>await get('aid')===audio.at(-1).id);}else await player.command(['keypress','ESC']);
+    assert.equal(await get('sid'),sid);
+    const aid=await get('aid');await click('subtitles');await menuIs('subtitles');await above('subtitles');await screenshot('mpv-subtitle-menu.png');await click('row-'+(subs.length+1));
+    await until(async()=>await get('sid')===(subs.length?subs.at(-1).id:false));assert.equal(await get('aid'),aid);
+    await click('speed');let l=await layout();await point(l.width/2,l.height/3);await menuIs(false);assert.ok(player.state.active);
+    await point(l.width/2,l.height/3);await player.command(['keypress','MBTN_RIGHT']);await menuIs('context');await click('row-1');await menuIs('overview');await screenshot('mpv-overview.png');
+    await player.command(['keypress','Alt+LEFT']);await menuIs(false);assert.ok(player.state.active);
+    await player.command(['keypress','MBTN_RIGHT']);await menuIs('context');await click('row-2');await menuIs('source');await screenshot('mpv-source-info.png');await click('back');await menuIs(false);assert.ok(player.state.active);
+    await click('toggle');await until(()=>!player.state.paused);l=await layout();await point(l.width/2,l.height/3);await until(async()=>await get('user-data/luma-osc/visible')===false);
+    await player.control('pause',true);await delay(250);l=await layout();const seek=l.buttons.seek;await point(seek.x+seek.w*.6,seek.y+seek.h/2);await player.command(['keypress','MBTN_LEFT']);await until(()=>Math.abs(player.state.position-player.state.duration*.6)<1);
+    await click('fullscreen');await until(async()=>await get('fullscreen')===true);await delay(200);await click('audio');await menuIs('audio');await player.command(['keypress','ESC']);await menuIs(false);assert.equal(await get('fullscreen'),true);
+    await player.command(['keypress','ESC']);await until(async()=>await get('fullscreen')===false);assert.ok(player.state.active);
+    console.log('PASS: unified native control sizes, menus above their trigger, pointer-leave dismissal, independent audio/subtitles, layered back, seek and auto-hide',JSON.stringify({codec:technical.technical.videoCodec,width:technical.technical.width,height:technical.technical.height}));
   }finally{await player.stop();}
 })().catch(error=>{console.error(error);process.exitCode=1;});

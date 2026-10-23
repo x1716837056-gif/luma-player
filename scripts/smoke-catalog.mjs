@@ -7,7 +7,7 @@ const fixture=await fs.mkdtemp(path.join(os.tmpdir(),'luma-catalog-'));
 let app;
 try {
   app=await electron.launch({...(process.env.LUMA_PACKAGED_EXE?{executablePath:process.env.LUMA_PACKAGED_EXE}:{}),args:[...(process.env.LUMA_PACKAGED_EXE?[]:['.']),`--user-data-dir=${fixture}`],timeout:30000});
-  const page=await app.firstWindow(),errors=[];page.on('pageerror',e=>errors.push(e.message));
+  const page=await app.firstWindow();await page.setViewportSize({width:1440,height:1000});const errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.getByRole('button',{name:'影片详情',exact:true}).waitFor();
   await page.getByRole('button',{name:'电影',exact:true}).click();
   assert.equal(await page.locator('.poster-card').count(),10);

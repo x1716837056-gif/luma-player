@@ -16,9 +16,11 @@ await fs.copyFile('public/artwork/arrival.jpg',path.join(movies,'poster.jpg'));
 const errors=[];let app;
 async function until(check){const deadline=Date.now()+20000;while(!await check()){if(Date.now()>deadline)throw new Error('Timed out waiting for player state');await new Promise(r=>setTimeout(r,100));}}
 try {
-  app=await electron.launch({...(process.env.LUMA_PACKAGED_EXE?{executablePath:process.env.LUMA_PACKAGED_EXE}:{}),args:[...(process.env.LUMA_PACKAGED_EXE?[]:['.']),`--user-data-dir=${path.join(fixture,'profile')}`],timeout:30000});
+  app=await electron.launch({env:{...process.env,LUMA_TEST_AUDIO_OUTPUT:'null'},...(process.env.LUMA_PACKAGED_EXE?{executablePath:process.env.LUMA_PACKAGED_EXE}:{}),args:[...(process.env.LUMA_PACKAGED_EXE?[]:['.']),`--user-data-dir=${path.join(fixture,'profile')}`],timeout:30000});
+  console.log('Media actions: window ready');
   const page=await app.firstWindow();page.on('pageerror',e=>errors.push(e.message));
-  await page.waitForFunction(()=>document.documentElement.dataset.lumaReady==='true');
+  console.log('Media actions: waiting for library');
+  await page.waitForFunction(()=>document.documentElement.dataset.lumaReady==='true',null,{timeout:15000});
   // The browser-style player has separate language/subtitle controls and working external VTT toggles.
   await page.locator('.hero .play-button').click();
   await page.getByRole('button',{name:'音轨语言',exact:true}).click();
@@ -49,8 +51,12 @@ try {
   await page.getByRole('button',{name:'电影',exact:true}).click();await page.getByRole('button',{name:'列表视图',exact:true}).click();await page.locator('.media-list-row').first().focus();await page.keyboard.press('Shift+F10');await page.getByRole('menu',{name:'影片快捷菜单'}).waitFor();await page.keyboard.press('ArrowDown');await page.keyboard.press('Enter');await info.waitFor();await page.keyboard.press('Escape');
   await page.locator('.media-list-row').first().click();await page.getByRole('button',{name:'立即播放',exact:true}).click();
   await page.getByRole('region',{name:'mpv 播放控制'}).waitFor();
-  await page.getByRole('button',{name:'暂停 mpv 播放',exact:true}).click();
-  await page.getByRole('button',{name:'mpv 音轨语言',exact:true}).click();await page.getByRole('menuitemradio',{name:/日语/}).click();
+  await page.getByRole('button',{name:'暂停 mpv 播放',exact:true}).click();await page.locator('.detail-modal .modal-close').click();
+  const audioButton=page.getByRole('button',{name:'mpv 音轨语言',exact:true});
+  await audioButton.click();let popup=page.getByRole('menu',{name:'mpv 音轨语言',exact:true});await popup.waitFor();const ab=await audioButton.boundingBox(),pb=await popup.boundingBox();assert.equal(ab.width,40);assert.equal(ab.height,40);assert.ok(pb.y+pb.height<ab.y);assert.ok(Math.abs(pb.x+pb.width/2-ab.x-ab.width/2)<2);
+  await page.mouse.move(15,180);await popup.waitFor({state:'detached'});const routeBefore=await page.locator('.toolbar-title').innerText();await audioButton.click();await page.getByRole('button',{name:'返回上一页',exact:true}).click();assert.equal(await popup.count(),0);assert.equal(await page.locator('.toolbar-title').innerText(),routeBefore);
+  await audioButton.click();await page.keyboard.press('Alt+ArrowLeft');assert.equal(await popup.count(),0);assert.equal(await page.locator('.toolbar-title').innerText(),routeBefore);
+  await audioButton.click();await page.getByRole('menuitemradio',{name:/日语/}).click();
   await until(()=>page.evaluate(async()=>(await window.desktop.playerState()).tracks.some(t=>t.type==='audio'&&t.lang==='jpn'&&t.selected)));
   await page.getByRole('button',{name:'mpv 字幕',exact:true}).click();await page.screenshot({animations:'disabled',path:'reference/media-subtitle-picker.png'});await page.getByRole('menuitemradio',{name:/中文/}).click();
   await until(()=>page.evaluate(async()=>(await window.desktop.playerState()).tracks.some(t=>t.type==='sub'&&t.lang==='zho'&&t.selected)));
@@ -62,4 +68,4 @@ try {
   await exec(process.execPath,['scripts/test-player-interface.cjs',movie],{cwd:process.cwd(),windowsHide:true,timeout:60000});
   assert.deepEqual(errors,[]);
   console.log('PASS: separate audio/subtitle controls, real two-language/two-subtitle switching, VTT off, card/list/player right-click, keyboard navigation and light/dark information panels');
-} finally {await app?.close();await fs.rm(fixture,{recursive:true,force:true});}
+} catch(error) {console.error('Media action failure:',error);throw error;} finally {await app?.close();await fs.rm(fixture,{recursive:true,force:true});}

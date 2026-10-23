@@ -25,6 +25,8 @@ class MpvPlayer extends EventEmitter {
     const args=['--no-config','--no-terminal','--force-window=yes','--keep-open=no','--hwdec=auto-copy','--osc=no','--osd-bar=no',`--script=${script}`,'--autofit=85%x85%',`--input-ipc-server=${pipe}`,`--title=Luma · ${media.title}`,`--force-media-title=${media.title}`];
     if(process.platform==='win32')args.push('--vo=gpu-next','--gpu-api=d3d11','--title-bar=no','--window-corners=round');
     if(options.mute)args.push('--mute=yes');
+    // Allows control tests to run on machines without an audio endpoint.
+    if(options.audioOutput==='null')args.push('--ao=null');
     if (media.progress>0 && media.progress<.96 && seconds>0) args.push(`--start=${media.progress*seconds}`);
     const child=spawn(executable,[...args,'--',media.path],{stdio:'ignore',windowsHide:true,shell:false});
     this.child=child;

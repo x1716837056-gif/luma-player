@@ -16,7 +16,7 @@ let app;
 await fs.mkdir('reference', {recursive:true});
 try {
   app = await electron.launch({ ...(process.env.LUMA_PACKAGED_EXE?{executablePath:process.env.LUMA_PACKAGED_EXE}:{}),args: [...(process.env.LUMA_PACKAGED_EXE?[]:['.']), ...(process.platform === 'linux' ? ['--ozone-platform=headless'] : []), `--user-data-dir=${path.join(fixture, 'profile')}`], timeout: 30000 });
-  let page = await app.firstWindow();
+  let page = await app.firstWindow();await page.setViewportSize({width:1440,height:1000});
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.getByRole('button', { name: '影片详情', exact: true }).waitFor();
@@ -84,7 +84,7 @@ try {
   app = null;
   await fs.rename(movies, `${movies}-offline`);
   app = await electron.launch({...(process.env.LUMA_PACKAGED_EXE?{executablePath:process.env.LUMA_PACKAGED_EXE}:{}),args:[...(process.env.LUMA_PACKAGED_EXE?[]:['.']), `--user-data-dir=${path.join(fixture,'profile')}`],timeout:30000});
-  page = await app.firstWindow();
+  page = await app.firstWindow();await page.setViewportSize({width:1440,height:1000});
   await page.getByRole('button', { name: '查看 测试影片 · 降临', exact: true }).waitFor();
   await page.getByRole('button', { name: '刷新影音库', exact: true }).first().click();
   await page.getByRole('status').filter({ hasText: '离线来源的资料已保留' }).waitFor();

@@ -1,8 +1,9 @@
 import {useEffect, useRef, useState, type CSSProperties, type ReactNode} from 'react';
-import {ArrowLeft, AudioLines, Check, ChevronDown, Film, LoaderCircle, Maximize, Minimize, Pause, Play, RotateCcw, RotateCw, Subtitles, Volume2, VolumeX} from 'lucide-react';
+import {ArrowLeft, AudioLines, Check, ChevronDown, Film, LoaderCircle, Maximize, Minimize, Pause, Play, RotateCcw, RotateCw, Subtitles, Volume2, VolumeX, X} from 'lucide-react';
 import type {Media} from './types';
 import {MediaContextMenu,MediaInfoDialog,type MediaInfoView} from './MediaActions';
 import {languageName} from './track-label';
+import {usePopoverDismiss} from './usePopoverDismiss';
 type BrowserAudioTrack={id:string;label:string;language:string;enabled:boolean};
 type BrowserAudioList=ArrayLike<BrowserAudioTrack>&EventTarget;
 const audioList=(video:HTMLVideoElement|null)=>(video as (HTMLVideoElement&{audioTracks?:BrowserAudioList})|null)?.audioTracks;
@@ -12,8 +13,8 @@ export const playbackTime = (value = 0) => {
   return `${seconds >= 3600 ? `${Math.floor(seconds / 3600)}:` : ''}${String(Math.floor(seconds / 60) % 60).padStart(seconds >= 3600 ? 2 : 1, '0')}:${String(seconds % 60).padStart(2, '0')}`;
 };
 export const rangeStyle = (value: number, max: number): CSSProperties => ({'--range-fill': `${max > 0 ? Math.max(0, Math.min(100, value / max * 100)) : 0}%`} as CSSProperties);
-function Control({label, children, onClick, className = '', expanded}: {label: string; children: ReactNode; onClick: () => void; className?: string; expanded?: boolean}) {
-  return <button type="button" className={`cinema-button ${className}`} aria-label={label} title={label} aria-expanded={expanded} onClick={onClick}>{children}</button>;
+function Control({label, children, onClick, className = '', expanded, backAction=false}: {label: string; children: ReactNode; onClick: () => void; className?: string; expanded?: boolean; backAction?: boolean}) {
+  return <button type="button" className={`cinema-button ${className}`} data-back-control={backAction||undefined} aria-label={label} title={label} aria-expanded={expanded} onClick={onClick}>{children}</button>;
 }
 
 export function PlayerModal({media, demo, onClose, onProgress}: {media: Media; demo: boolean; onClose: () => void; onProgress: (progress: number, minutes: number) => void}) {
@@ -29,6 +30,15 @@ export function PlayerModal({media, demo, onClose, onProgress}: {media: Media; d
   const lastSave = useRef(0), lastVolume = useRef(.8), lastActivity = useRef(Date.now()), hovering = useRef(false), fallback = useRef(false), disposed = useRef(false);
   const src = demo ? window.__LUMA_ASSETS?.['./demo.mp4'] || './demo.mp4' : media.videoUrl || (media.path ? `luma-media://local/${encodeURIComponent(media.path)}` : '');
   const reveal = () => { lastActivity.current = Date.now(); setVisible(true); };
+  usePopoverDismiss(menu,container,()=>setMenu(null),'.cinema-menu-anchor:has([role="menu"])');
+  function back() {
+    const event=new Event('luma:back',{cancelable:true});document.dispatchEvent(event);if(event.defaultPrevented)return;
+    if(info){setInfo(null);return;}
+    if(contextMenu){setContextMenu(null);return;}
+    if(menu){setMenu(null);return;}
+    if(document.fullscreenElement){void document.exitFullscreen();return;}
+    onClose();
+  }
   async function unsupported() {
     if (fallback.current || disposed.current) return;
     setLoading(false);
@@ -86,9 +96,9 @@ export function PlayerModal({media, demo, onClose, onProgress}: {media: Media; d
   }
   return <div className={`player-overlay cinema-player ${visible || paused || error || loading ? 'show-controls' : ''}`} role="dialog" aria-modal="true" aria-label={`播放 ${media.title}`} ref={container} tabIndex={0}
     onContextMenu={e=>{e.preventDefault();e.stopPropagation();setMenu(null);setContextMenu({x:e.clientX,y:e.clientY});reveal();}}
-    onPointerMove={reveal} onPointerDown={e => { if (e.target === video.current) setMenu(null); }} onKeyDown={e => {
+    onAuxClick={e=>{if(e.button===3){e.preventDefault();e.stopPropagation();back();}}} onPointerMove={reveal} onPointerDown={e => { if (e.target === video.current) setMenu(null); }} onKeyDown={e => {
       reveal();
-      if (e.key === 'Escape') { if (menu) setMenu(null); else if (!document.fullscreenElement) onClose(); return; }
+      if (e.key === 'Escape' || (e.altKey && e.key==='ArrowLeft')) { e.preventDefault();e.stopPropagation();back();return; }
       if ((e.target as HTMLElement).closest('input,button')) return;
       if (e.key === ' ') { e.preventDefault(); toggle(); }
       if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { e.preventDefault(); seek(elapsed + (e.key === 'ArrowRight' ? 10 : -10)); }
@@ -104,9 +114,9 @@ export function PlayerModal({media, demo, onClose, onProgress}: {media: Media; d
     </video>
     <div className="cinema-shade" />
     <header className="cinema-heading">
-      <Control label="关闭播放器" onClick={onClose} className="cinema-back"><ArrowLeft size={21} /></Control>
+      <Control label="返回上一层" backAction onClick={back} className="cinema-back"><ArrowLeft size={21} /></Control>
       <div className="cinema-title"><span>{paused ? '已暂停' : '正在播放'}</span><strong>{media.title}</strong><small>{demo ? 'Big Buck Bunny · 演示片段' : [media.year, media.episode, media.quality].filter(Boolean).join(' · ')}</small></div>
-      <span className="cinema-wordmark">Luma<span>影院</span></span>
+      <span className="cinema-wordmark">Luma<span>影院</span></span><Control label="关闭播放器" onClick={onClose}><X size={19}/></Control>
     </header>
     {(loading || switching) && !error && <div className="cinema-loading" role="status"><LoaderCircle className="spinning" size={25} /><span>{switching ? '正在切换兼容播放器' : '正在准备影片'}</span></div>}
     {error && <div className="cinema-error"><Film size={35} strokeWidth={1.3} /><h2>暂时无法播放</h2><p>{error}</p><button onClick={onClose}>返回影音库</button></div>}

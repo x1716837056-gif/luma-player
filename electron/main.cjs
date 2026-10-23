@@ -114,7 +114,7 @@ function wireIpc() {
     try { await fsp.access(actual.path,fs.constants.R_OK); } catch { throw new Error('影片文件暂时无法读取，请检查硬盘或 NAS 连接。'); }
     const executable=toolPath('mpv',settings.mpvPath);
     if(!executable)throw new Error('未找到 mpv，请在播放设置中指定 mpv.exe。');
-    return player.start(executable,actual);
+    return player.start(executable,actual,{audioOutput:process.env.LUMA_TEST_AUDIO_OUTPUT==='null'?'null':undefined});
   });
   ipcMain.on('window:action',(_,action)=>{
     if(action==='minimize')window.minimize();
@@ -164,13 +164,16 @@ else {
   app.whenReady().then(async () => {
 
     settings = {tmdbToken:'',metadataLanguage:'zh-CN',defaultPlayer:'auto',mpvPath:'',autoScrape:true,watchFolders:true,...await readJson('settings.json', {})};
+    if(closing)return;
     if (settings.encryptedToken) { try { settings.tmdbToken = safeStorage.decryptString(Buffer.from(settings.encryptedToken, 'base64')); } catch { settings.tmdbToken = ''; } delete settings.encryptedToken; }
     database=openLibraryDatabase(app.getPath('userData'));
     service=new LibraryService({database,directory:app.getPath('userData'),getSettings:()=>settings,notify,authorize:media=>{allowedFiles.clear();authorizeMedia(media);},fetcher:networkFetch});
     authorizeMedia(service.library?.media);
     await service.init({watchFolders:false});
+    if(closing)return;
     let lastProgress=0;
-    player.on('state',state=>notify('player:changed',state));
+    let wasPlaying=false;
+    player.on('state',state=>{notify('player:changed',state);if(wasPlaying&&!state.active&&!closing&&window&&!window.isDestroyed()){if(window.isMinimized())window.restore();window.show();window.focus();}wasPlaying=state.active;});
     player.on('progress',state=>{
       if(!state.mediaId || !(state.duration>0))return;
       if(!state.ended && !state.force && Date.now()-lastProgress<2000)return;
@@ -180,7 +183,7 @@ else {
     protocol.handle('luma-media', serveLocalMedia);
     wireIpc();
     await createWindow();
-  }).catch(error => { dialog.showErrorBox('Luma 无法启动', error.message); app.quit(); });
+  }).catch(error => { if(!closing)dialog.showErrorBox('Luma 无法启动', error.message); app.quit(); });
   app.on('before-quit',event=>{
     if(closing)return;event.preventDefault();closing=true;
     clearTimeout(backgroundTimer);

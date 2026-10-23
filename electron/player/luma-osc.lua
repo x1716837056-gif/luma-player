@@ -8,6 +8,7 @@ local panel, menu_box, frame = {}, nil, {}
 local page = 0
 local last_visible
 local last_menu, context_at = false, {x=0,y=0}
+local menu_leave_at, layout_signature = nil, ''
 local function clamp(n, a, b) return math.max(a, math.min(b, n)) end
 local function prop(name, fallback) return mp.get_property_native(name, fallback) end
 local function clock(n)
@@ -67,7 +68,8 @@ local function icon(name, x, y, s, a)
     end
 end
 local function activity() last_activity = mp.get_time() end
-local function toggle_menu(kind) menu = menu == kind and nil or kind; page = 0; activity() end
+local function toggle_menu(kind) menu = menu == kind and nil or kind; page = 0; menu_leave_at=nil; activity() end
+local function back() if menu then menu=nil elseif prop('fullscreen') then mp.set_property_native('fullscreen',false) else mp.commandv('quit') end;activity() end
 local function seek(n) mp.commandv('seek', clamp(n,0,prop('duration',0)), 'absolute+exact'); activity() end
 local languages={eng='英语',en='英语',chi='中文',zho='中文',zh='中文',cmn='普通话',yue='粤语',jpn='日语',ja='日语',kor='韩语',ko='韩语',fra='法语',fre='法语',fr='法语',deu='德语',ger='德语',de='德语',spa='西班牙语',es='西班牙语',rus='俄语',ru='俄语'}
 local function track_label(t)
@@ -133,11 +135,19 @@ local function menu_rows()
 end
 local function render()
     local dims=prop('osd-dimensions');if not dims or dims.w==0 or dims.h==0 then return end
-    scale=math.max(prop('display-hidpi-scale',1),dims.h/900)
+    scale=math.min(math.max(prop('display-hidpi-scale',1),dims.h/900),dims.h/360)
     W,H=dims.w/scale,dims.h/scale
     local mouse=prop('mouse-pos',{});mx,my=(mouse.x or -1)/scale,(mouse.y or -1)/scale
-    panel={x=math.max(20,(W-760)/2),y=H-166,w=math.min(760,W-40),h=128}
+    panel={x=math.max(20,(W-720)/2),y=H-148,w=math.min(720,W-40),h=116}
     local now=mp.get_time()
+    if menu and menu~='overview' and menu~='source' then
+        local trigger=nil
+        for _,item in ipairs(elements) do if item.id==menu then trigger=item;break end end
+        local bridge=trigger and menu_box and my>=menu_box.y+menu_box.h and my<=trigger.y and mx>=math.min(trigger.x,menu_box.x) and mx<=math.max(trigger.x+trigger.w,menu_box.x+menu_box.w)
+        if inside(menu_box) or inside(trigger) or bridge then menu_leave_at=nil
+        elseif not menu_leave_at then menu_leave_at=now
+        elseif now-menu_leave_at>.18 then menu=nil;menu_leave_at=nil end
+    else menu_leave_at=nil end
     local hover=mouse.hover and (inside(panel) or inside(menu_box) or my<90)
     local visible=prop('pause',false) or menu or drag or hover or now-last_activity<2.8
     local dt=math.min(.1,now-last_tick);last_tick=now
@@ -153,41 +163,41 @@ local function render()
         rect(0,H-240+i*4,W,4,0,'000000',255-i*1.2)
         rect(0,i*3,W,3,0,'000000',math.min(255,150+i*1.75))
     end
-    button('back',26,28,40,40,function()mp.commandv('quit')end,'返回影音库')
+    button('back',26,28,40,40,back,'返回影音库')
     rect(26,28,40,40,20,'FFFFFF',232);icon('back',34,36,1)
     text(83,31,prop('pause') and '已暂停' or '正在播放',10,110)
     text(83,55,prop('media-title','Luma'),20,0,4,true,math.max(100,W-265))
     button('minimize',W-102,30,34,34,function()mp.set_property_native('window-minimized',true)end,'最小化');icon('minimize',W-97,35,1,55)
     button('close',W-58,30,34,34,function()mp.commandv('quit')end,'关闭播放器');icon('close',W-53,35,1,55)
     local x,y,w=panel.x,panel.y,panel.w
-    rect(x-1,y-1,w+2,130,23,'FFFFFF',219)
-    rect(x,y,w,128,22,'29272A',37)
+    rect(x-1,y-1,w+2,118,21,'FFFFFF',219)
+    rect(x,y,w,116,20,'29272A',37)
     local compact=w<600
     local center=x+(compact and 36 or w/2)
     if not compact then button('volume',x+16,y+16,34,36,function()mp.commandv('cycle','mute')end,'静音');icon('volume',x+21,y+22,1,35) end
-    if w>540 then
+    if not compact then
         local v=button('volume-slider',x+59,y+21,72,26,nil,'音量');v.slider='volume'
         rect(v.x,v.y+11,v.w,3,1.5,'FFFFFF',205);rect(v.x,v.y+11,v.w*clamp(prop('volume',100)/100,0,1),3,1.5,'FFFFFF',45)
     end
     if not compact then button('rewind',center-89,y+10,42,48,function()mp.commandv('seek',-10,'relative+exact')end,'后退 10 秒');icon('rewind',center-82,y+20,1.05,20) end
-    button('toggle',center-24,y+10,48,48,function()mp.commandv('cycle','pause');activity()end,'播放 / 暂停');rect(center-24,y+10,48,48,24,'FFFFFF',242);icon(prop('pause') and 'play' or 'pause',center-15,y+19,1.25)
+    button('toggle',center-22,y+10,44,44,function()mp.commandv('cycle','pause');activity()end,'播放 / 暂停');rect(center-22,y+10,44,44,24,'FFFFFF',242);icon(prop('pause') and 'play' or 'pause',center-13,y+19,1.1)
     if not compact then button('forward',center+47,y+10,42,48,function()mp.commandv('seek',10,'relative+exact')end,'前进 10 秒');icon('forward',center+54,y+20,1.05,20) end
-    button('speed',x+w-196,y+16,48,36,function()toggle_menu('speed')end,'播放速度');text(x+w-172,y+34,prop('speed',1)..'×',12,25,5,true)
-    button('audio',x+w-146,y+14,42,44,function()toggle_menu('audio')end,'音轨语言');icon('audio',x+w-137,y+17,1,30);text(x+w-125,y+49,'语言',8,95,5)
-    button('subtitles',x+w-100,y+14,42,44,function()toggle_menu('subtitles')end,'字幕');icon('subtitles',x+w-91,y+17,1,30);text(x+w-79,y+49,'字幕',8,95,5)
-    button('fullscreen',x+w-52,y+16,34,36,function()mp.commandv('cycle','fullscreen')end,'全屏');icon('fullscreen',x+w-47,y+22,1,30)
-    local timeline=button('seek',x+24,y+69,w-48,22,nil);timeline.slider='seek'
+    button('speed',x+w-192,y+12,40,40,function()toggle_menu('speed')end,'播放速度');text(x+w-172,y+34,prop('speed',1)..'×',12,25,5,true)
+    button('audio',x+w-148,y+12,40,40,function()toggle_menu('audio')end,'音轨语言');icon('audio',x+w-138,y+17,.85,30);text(x+w-128,y+46,'语言',8,95,5)
+    button('subtitles',x+w-104,y+12,40,40,function()toggle_menu('subtitles')end,'字幕');icon('subtitles',x+w-94,y+17,.85,30);text(x+w-84,y+46,'字幕',8,95,5)
+    button('fullscreen',x+w-60,y+12,40,40,function()mp.commandv('cycle','fullscreen')end,'全屏');icon('fullscreen',x+w-50,y+22,.85,30)
+    local timeline=button('seek',x+20,y+64,w-40,20,nil);timeline.slider='seek'
     local position,duration=prop('time-pos',0),prop('duration',0)
     local ratio=duration>0 and clamp(position/duration,0,1) or 0
-    rect(timeline.x,y+79,timeline.w,3,1.5,'FFFFFF',205);rect(timeline.x,y+79,timeline.w*ratio,3,1.5,'FFFFFF',12)
+    rect(timeline.x,y+74,timeline.w,3,1.5,'FFFFFF',205);rect(timeline.x,y+74,timeline.w*ratio,3,1.5,'FFFFFF',12)
     if inside(timeline) or drag=='seek' then
-        rect(timeline.x+timeline.w*ratio-4,y+76,8,8,4,'FFFFFF',0)
+        rect(timeline.x+timeline.w*ratio-4,y+71,8,8,4,'FFFFFF',0)
         local at=clamp((mx-timeline.x)/timeline.w,0,1)
         rect(timeline.x+timeline.w*at-30,y+43,60,26,7,'19171B',8);text(timeline.x+timeline.w*at,y+56,clock(duration*at),11,0,5)
     end
-    text(x+24,y+104,clock(position),11,110)
-    text(x+w-24,y+104,'−'..clock(duration-position),11,110,6)
-    if prop('pause') then text(center,y+104,'已暂停',10,150,5) end
+    text(x+20,y+96,clock(position),11,110)
+    text(x+w-20,y+96,'−'..clock(duration-position),11,110,6)
+    if prop('pause') then text(center,y+96,'已暂停',10,150,5) end
     if menu=='overview' or menu=='source' then
         local media=prop('user-data/luma-osc/media',{})
         local mw=math.min(640,W-40)
@@ -213,9 +223,12 @@ local function render()
         local limit=math.max(3,math.floor((H-235)/34)-2)
         page=clamp(page,0,math.max(0,math.ceil(#rows/limit)-1))
         local first,last=page*limit+1,math.min((page+1)*limit,#rows)
-        local mw=menu=='speed' and 190 or math.min(310,W-40)
+        local mw=menu=='context' and math.min(280,W-24) or math.min(240,W-24)
         local mh=(last-first+1)*34+48+(#rows>limit and 34 or 0)
-        local bx,by=x+w-mw,y-mh-16
+        local trigger=nil
+        for _,item in ipairs(elements) do if item.id==menu then trigger=item;break end end
+        local bx=clamp((trigger and trigger.x+trigger.w/2 or x+w-80)-mw/2,12,W-mw-12)
+        local by=(trigger and trigger.y or y)-mh-10
         if menu=='context' then bx=clamp(context_at.x,12,W-mw-12);by=clamp(context_at.y,12,H-mh-12) end
         menu_box={x=bx,y=by,w=mw,h=mh}
         rect(bx-1,by-1,mw+2,mh+2,17,'FFFFFF',218);rect(bx,by,mw,mh,16,'29272A',8)
@@ -239,8 +252,15 @@ local function render()
             rect(tx-64,item.y-37,128,28,7,'19171B',10);text(tx,item.y-23,item.label,11,0,5)
         end
     end
+    local signature=W..'x'..H..':'..tostring(menu)..':'..page
+    if signature~=layout_signature then
+        layout_signature=signature
+        local buttons={}
+        for _,item in ipairs(elements) do buttons[item.id]={x=item.x,y=item.y,w=item.w,h=item.h} end
+        mp.set_property_native('user-data/luma-osc/layout',{kind=menu or false,panel=panel,menu=menu_box,buttons=buttons,scale=scale,width=W,height=H})
+    end
     overlay.res_x,overlay.res_y,overlay.z,overlay.data=W,H,1000,table.concat(frame,'\n');overlay:update()
-    mp.set_mouse_area(x*scale,y*scale,(x+w)*scale,(y+128)*scale,'luma-panel');mp.enable_key_bindings('luma-panel')
+    mp.set_mouse_area(x*scale,y*scale,(x+w)*scale,(y+116)*scale,'luma-panel');mp.enable_key_bindings('luma-panel')
     mp.set_mouse_area(0,0,W*scale,86*scale,'luma-top');mp.enable_key_bindings('luma-top')
     if menu_box then mp.set_mouse_area(menu_box.x*scale,menu_box.y*scale,(menu_box.x+menu_box.w)*scale,(menu_box.y+menu_box.h)*scale,'luma-menu');mp.enable_key_bindings('luma-menu') else mp.disable_key_bindings('luma-menu') end
 end
@@ -265,14 +285,16 @@ mp.add_forced_key_binding('MOUSE_MOVE','luma-move',function()
     activity();local m=prop('mouse-pos',{});mx,my=(m.x or -1)/scale,(m.y or -1)/scale
     if drag and pressed then slider(pressed) end
 end)
-mp.add_forced_key_binding('MOUSE_LEAVE','luma-leave',function()mx,my=-1,-1 end)
+mp.add_forced_key_binding('MOUSE_LEAVE','luma-leave',function()mx,my=-1,-1;if menu~='overview' and menu~='source' then menu=nil end end)
 mp.add_forced_key_binding('MBTN_RIGHT','luma-context',function()
-    local mouse=prop('mouse-pos',{});context_at={x=(mouse.x or 0)/scale,y=(mouse.y or 0)/scale};page=0;menu=menu=='context' and nil or 'context';activity();render()
+    local mouse=prop('mouse-pos',{});context_at={x=(mouse.x or 0)/scale,y=(mouse.y or 0)/scale};page=0;menu_leave_at=nil;menu=menu=='context' and nil or 'context';activity();render()
 end)
 mp.add_key_binding('SPACE','luma-pause',function()mp.commandv('cycle','pause');activity()end)
 mp.add_key_binding('LEFT','luma-back',function()mp.commandv('seek',-10,'relative+exact');activity()end,{repeatable=true})
 mp.add_key_binding('RIGHT','luma-forward',function()mp.commandv('seek',10,'relative+exact');activity()end,{repeatable=true})
-mp.add_forced_key_binding('ESC','luma-escape',function()if menu then menu=nil elseif prop('fullscreen') then mp.set_property_native('fullscreen',false) else mp.commandv('quit') end;activity()end)
+mp.add_forced_key_binding('ESC','luma-escape',back)
+mp.add_key_binding('Alt+LEFT','luma-go-back',back)
+mp.add_key_binding('MBTN_LEFT','luma-background-click',function()if menu then menu=nil else mp.commandv('cycle','pause') end;activity()end)
 mp.register_script_message('luma-show',function()activity();render()end)
 mp.register_event('file-loaded',activity)
 mp.observe_property('pause','bool',function()activity()end)

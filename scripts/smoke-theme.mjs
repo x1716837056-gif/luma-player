@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 const fixture=await fs.mkdtemp(path.join(os.tmpdir(),'luma-theme-'));
 let app;
-async function launch(){app=await electron.launch({...(process.env.LUMA_PACKAGED_EXE?{executablePath:process.env.LUMA_PACKAGED_EXE}:{}),args:[...(process.env.LUMA_PACKAGED_EXE?[]:['.']),`--user-data-dir=${fixture}`],timeout:30000});const page=await app.firstWindow();await page.getByRole('button',{name:'影片详情',exact:true}).waitFor();return page;}
+async function launch(){app=await electron.launch({...(process.env.LUMA_PACKAGED_EXE?{executablePath:process.env.LUMA_PACKAGED_EXE}:{}),args:[...(process.env.LUMA_PACKAGED_EXE?[]:['.']),`--user-data-dir=${fixture}`],timeout:30000});const page=await app.firstWindow();await page.setViewportSize({width:1440,height:1000});await page.getByRole('button',{name:'影片详情',exact:true}).waitFor();return page;}
 try {
   let page=await launch();const errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.getByRole('button',{name:'切换到浅色模式',exact:true}).click();

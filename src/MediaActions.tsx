@@ -2,6 +2,7 @@ import {useEffect,useLayoutEffect,useRef,useState} from 'react';
 import {AlignLeft,AudioLines,Check,FileVideo,FolderOpen,Subtitles,X} from 'lucide-react';
 import type {Media,Source} from './types';
 import {trackName} from './track-label';
+import {usePopoverDismiss} from './usePopoverDismiss';
 export type MediaInfoView='overview'|'source';
 
 export function MediaContextMenu({title,x,y,onChoose,onClose,cinematic=false}:{title:string;x:number;y:number;onChoose:(view:MediaInfoView)=>void;onClose:()=>void;cinematic?:boolean}) {
@@ -9,12 +10,9 @@ export function MediaContextMenu({title,x,y,onChoose,onClose,cinematic=false}:{t
   const previousFocus=useRef(document.activeElement as HTMLElement);
   const closeRef=useRef(onClose);closeRef.current=onClose;
   const [position,setPosition]=useState({x,y});
-  useLayoutEffect(()=>{const r=ref.current!.getBoundingClientRect();setPosition({x:Math.max(12,Math.min(x,innerWidth-r.width-12)),y:Math.max(12,Math.min(y,innerHeight-r.height-12))});ref.current!.querySelector<HTMLButtonElement>('button')?.focus();},[x,y]);
-  useEffect(()=>{
-    const dismiss=(event:PointerEvent)=>{if(!ref.current?.contains(event.target as Node))closeRef.current();};
-    const close=()=>closeRef.current();document.addEventListener('pointerdown',dismiss);window.addEventListener('resize',close);window.addEventListener('scroll',close,true);
-    return()=>{document.removeEventListener('pointerdown',dismiss);window.removeEventListener('resize',close);window.removeEventListener('scroll',close,true);if(previousFocus.current?.isConnected)previousFocus.current.focus();};
-  },[]);
+  useLayoutEffect(()=>{const r=ref.current!.getBoundingClientRect();setPosition({x:Math.max(12,Math.min(x,innerWidth-r.width-12)),y:Math.max(12,Math.min(y,innerHeight-r.height-12))});ref.current!.querySelector<HTMLButtonElement>('button')?.focus({preventScroll:true});},[x,y]);
+  usePopoverDismiss(true,ref,()=>closeRef.current());
+  useEffect(()=>()=>{if(previousFocus.current?.isConnected)previousFocus.current.focus();},[]);
   return <div ref={ref} role="menu" aria-label="影片快捷菜单" className={`media-context-menu ${cinematic?'cinematic-surface':''}`} style={{left:position.x,top:position.y}} onContextMenu={e=>e.preventDefault()} onKeyDown={e=>{
     const buttons=Array.from(ref.current!.querySelectorAll('button'));
     if(e.key==='Escape'){e.preventDefault();e.stopPropagation();onClose();}
@@ -47,10 +45,10 @@ export function MediaInfoDialog({media,source,view,onClose,cinematic=false}:{med
 export function TrackMenu({kind,tracks,value,onSelect}:{kind:'audio'|'subtitle';tracks:{id:number;title?:string;lang?:string;selected?:boolean}[];value:number|'no';onSelect:(value:number|'no')=>void}) {
   const [open,setOpen]=useState(false),ref=useRef<HTMLDivElement>(null);
   useLayoutEffect(()=>{if(open)ref.current?.querySelector<HTMLButtonElement>('[role="menuitemradio"][aria-checked="true"]')?.focus();},[open]);
-  useEffect(()=>{if(!open)return;const close=(e:PointerEvent)=>{if(!ref.current?.contains(e.target as Node))setOpen(false);};document.addEventListener('pointerdown',close);return()=>document.removeEventListener('pointerdown',close);},[open]);
+  usePopoverDismiss(open,ref,()=>setOpen(false));
   const label=kind==='audio'?'音轨语言':'字幕';const Icon=kind==='audio'?AudioLines:Subtitles;
-  return <div className="mpv-track-picker" ref={ref} onKeyDown={e=>{if(e.key==='Escape'){e.stopPropagation();setOpen(false);ref.current?.querySelector('button')?.focus();}if(open&&['ArrowUp','ArrowDown'].includes(e.key)){e.preventDefault();const items=Array.from(ref.current!.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]'));const i=items.indexOf(document.activeElement as HTMLButtonElement);items[(i+(e.key==='ArrowUp'?-1:1)+items.length)%items.length]?.focus();}}}>
+  return <div className="mpv-track-picker" ref={ref} onKeyDown={e=>{if(e.key==='Escape'||(e.altKey&&e.key==='ArrowLeft')){e.preventDefault();e.stopPropagation();setOpen(false);ref.current?.querySelector('button')?.focus();}if(open&&['ArrowUp','ArrowDown'].includes(e.key)){e.preventDefault();const items=Array.from(ref.current!.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]'));const i=items.indexOf(document.activeElement as HTMLButtonElement);items[(i+(e.key==='ArrowUp'?-1:1)+items.length)%items.length]?.focus();}}}>
     <button className="mpv-track-button" aria-label={`mpv ${label}`} aria-haspopup="menu" aria-expanded={open} onClick={()=>setOpen(!open)}><Icon size={17}/><span>{label}<small>{value==='no'?'关闭':trackName(tracks.find(t=>t.id===value)||{},kind)}</small></span></button>
-    {open&&<div className="cinema-menu mpv-track-menu" role="menu" aria-label={`mpv ${label}`}><h3>{label}</h3>{[{id:'no' as const,title:kind==='audio'?'关闭音轨':'关闭字幕'},...tracks].map(t=><button key={t.id} role="menuitemradio" aria-checked={value===t.id} onClick={()=>{onSelect(t.id);setOpen(false);}}><span>{t.id==='no'?t.title:trackName(t,kind)}</span>{value===t.id&&<Check size={15}/>}</button>)}</div>}
+    {open&&<div className="cinema-menu mpv-track-menu" role="menu" aria-label={`mpv ${label}`}><h3>{label}</h3>{[{id:'no' as const,title:kind==='audio'?'关闭音轨':'关闭字幕'},...tracks].map(t=><button key={t.id} role="menuitemradio" aria-checked={value===t.id} onClick={()=>{onSelect(t.id);setOpen(false);ref.current?.querySelector('button')?.focus();}}><span>{t.id==='no'?t.title:trackName(t,kind)}</span>{value===t.id&&<Check size={15}/>}</button>)}</div>}
   </div>;
 }
