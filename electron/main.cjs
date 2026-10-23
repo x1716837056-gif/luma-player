@@ -4,11 +4,19 @@ const fsp = require('node:fs/promises');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
 const { Readable } = require('node:stream');
-const { scanFolder, parseRange, searchMetadata } = require('./library.cjs');
+const { parseRange } = require('./library.cjs');
+const { searchMetadata } = require('./metadata.cjs');
+const { openLibraryDatabase } = require('./database.cjs');
+const { LibraryService } = require('./library-service.cjs');
+const { MpvPlayer } = require('./mpv.cjs');
+const { probeMedia,toolPath } = require('./probe.cjs');
 
 protocol.registerSchemesAsPrivileged([{ scheme: 'luma-media', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true } }]);
 let window;
-let library;
+let service;
+let database;
+const player=new MpvPlayer();
+const networkFetch=(url,options)=>net.fetch(String(url),options);
 let settings = {};
 let saveQueue = Promise.resolve();
 const allowedFiles = new Set();
@@ -35,54 +43,69 @@ async function writeJson(name, value) {
   return saveQueue;
 }
 
+function notify(channel,payload) { if(window && !window.isDestroyed())window.webContents.send(channel,payload); }
+function currentMedia(id) {
+  const media=service.library?.media.find(m=>m.id===id);
+  if(!media)throw new Error('影片未加入影音库。');
+  return media;
+}
 function wireIpc() {
-  ipcMain.handle('library:load', () => library);
-  ipcMain.handle('library:save', async (_, next) => {
-    if (!next || !Array.isArray(next.media) || !Array.isArray(next.sources)) throw new Error('影音库格式无效。');
-    library = next;
-    await writeJson('library.json', next);
+  ipcMain.handle('library:load',()=>service.library);
+  ipcMain.handle('library:save',(_,next)=>{
+    if(!next || !Array.isArray(next.media) || !Array.isArray(next.sources))throw new Error('影音库格式无效。');
+    for(const item of next.media) if(item.path && !allowedFiles.has(normalize(item.path)))throw new Error('请先扫描来源。');
+    service.replace(next);
   });
-  ipcMain.handle('settings:load', () => settings);
-  ipcMain.handle('settings:save', async (_, next) => {
-    if (!next || typeof next.tmdbToken !== 'string' || typeof next.mpvPath !== 'string' || !['native', 'mpv'].includes(next.defaultPlayer)) throw new Error('设置格式无效。');
-    settings = next;
-    const persisted = { ...next };
-    if (next.tmdbToken && safeStorage.isEncryptionAvailable()) { persisted.encryptedToken = safeStorage.encryptString(next.tmdbToken).toString('base64'); delete persisted.tmdbToken; }
-    else if (next.tmdbToken) throw new Error('系统凭据加密不可用，无法安全保存 TMDB 令牌。');
-    await writeJson('settings.json', persisted);
+  ipcMain.handle('library:patch',(_,id,patch)=>{
+    const media=currentMedia(id);
+    const safe={};
+    for(const key of ['favorite','watched'])if(typeof patch[key]==='boolean')safe[key]=patch[key];
+    if(Number.isFinite(patch.progress))safe.progress=Math.min(1,Math.max(0,patch.progress));
+    if(Number.isFinite(patch.duration)&&patch.duration>0)safe.duration=media.technical?.durationSeconds ? media.technical.durationSeconds/60 : patch.duration;
+    return service.patch(id,safe);
   });
-  ipcMain.handle('source:select', async () => {
-    const result = await dialog.showOpenDialog(window, { title: '选择影片文件夹', properties: ['openDirectory'] });
-    return result.canceled ? null : result.filePaths[0];
+  ipcMain.handle('settings:load',()=>settings);
+  ipcMain.handle('settings:save',async (_,next)=>{
+    if(!next || typeof next.tmdbToken!=='string' || typeof next.mpvPath!=='string' || !['auto','native','mpv'].includes(next.defaultPlayer))throw new Error('设置格式无效。');
+    const previous=settings;
+    const persisted={...next,theme:next.theme==='light'?'light':'dark'};
+    if(next.tmdbToken && safeStorage.isEncryptionAvailable()){persisted.encryptedToken=safeStorage.encryptString(next.tmdbToken).toString('base64');delete persisted.tmdbToken;}
+    else if(next.tmdbToken)throw new Error('系统凭据加密不可用，无法安全保存 TMDB 令牌。');
+    await writeJson('settings.json',persisted);settings=next;
+    if(settings.watchFolders!==previous.watchFolders)await service.syncWatchers();
+    if(settings.autoScrape && settings.tmdbToken && (settings.tmdbToken!==previous.tmdbToken || settings.autoScrape!==previous.autoScrape || settings.metadataLanguage!==previous.metadataLanguage))service.enqueue((service.library?.media||[]).filter(m=>m.imported && ((!m.metadataOrigin && !m.tmdbId) || (m.tmdbId && !m.certificationCheckedAt))));
   });
-  ipcMain.handle('source:scan', async (_, folder, type) => {
-    const result = await scanFolder(folder, type === 'nas' ? 'nas' : 'local');
-    authorizeMedia(result.media);
-    return result;
+  ipcMain.handle('source:select',async ()=>{
+    const result=await dialog.showOpenDialog(window,{title:'选择影片文件夹',properties:['openDirectory']});
+    return result.canceled?null:result.filePaths[0];
   });
-  ipcMain.handle('metadata:search', (_, media, query, kind) => searchMetadata(media, query, kind, settings.tmdbToken, settings.metadataLanguage, net.fetch));
-  ipcMain.handle('file:reveal', (_, filename) => {
-    if (typeof filename !== 'string' || !allowedFiles.has(normalize(filename))) throw new Error('文件未加入影音库。');
+  ipcMain.handle('source:scan',(_,folder,type)=>service.scan(folder,type==='nas'?'nas':'local'));
+  ipcMain.handle('metadata:search',(_,media,query,kind)=>searchMetadata(media,query,kind,settings.tmdbToken,settings.metadataLanguage,networkFetch));
+  ipcMain.handle('metadata:apply',(_,id,candidate)=>service.match(id,candidate));
+  ipcMain.handle('tasks:start',()=>{if(!settings.tmdbToken)throw new Error('请先在设置中填写 TMDB API Key / 读取令牌，再开始自动匹配。');return service.enqueue((service.library?.media||[]).filter(m=>m.imported && ((!m.metadataOrigin && !m.tmdbId) || (m.tmdbId && !m.certificationCheckedAt))),true);});
+  ipcMain.handle('tasks:cancel',()=>service.cancel());
+  ipcMain.handle('tasks:status',()=>service.status());
+  ipcMain.handle('player:state',()=>player.state);
+  ipcMain.handle('player:control',(_,action,value)=>player.control(action,value));
+  ipcMain.handle('media:probe',async (_,id)=>{
+    const media=currentMedia(id);return service.patch(id,await probeMedia(media.path));
+  });
+  ipcMain.handle('file:reveal',(_,filename)=>{
+    if(typeof filename!=='string' || !allowedFiles.has(normalize(filename)))throw new Error('文件未加入影音库。');
     shell.showItemInFolder(filename);
   });
-  ipcMain.handle('player:mpv', async (_, media) => {
-    if (typeof media.path !== 'string' || !allowedFiles.has(normalize(media.path))) throw new Error('请先导入本地影片。');
-    const executable = settings.mpvPath;
-    if (!executable || !path.isAbsolute(executable)) throw new Error('请先在播放设置中填写 mpv.exe 的完整路径。');
-    try { await fsp.access(executable, fs.constants.F_OK); } catch { throw new Error('没有找到 mpv，请检查设置中的路径。'); }
-    await new Promise((resolve, reject) => {
-      const args = ['--force-window=yes', '--keep-open=no', '--hwdec=auto', `--title=Luma · ${media.title}`];
-      if (media.progress && media.duration) args.push(`--start=${Math.round(media.progress * media.duration * 60)}`);
-      args.push('--', media.path);
-      const child = spawn(executable, args, { detached: true, stdio: 'ignore', windowsHide: false, shell: false });
-      child.once('error', () => reject(new Error('mpv 启动失败，请检查可执行文件。')));
-      child.once('spawn', () => { child.unref(); resolve(); });
-    });
+  ipcMain.handle('player:mpv',async (_,media)=>{
+    const actual=currentMedia(media.id);
+    if(!actual.path || !allowedFiles.has(normalize(actual.path)))throw new Error('请先导入本地影片。');
+    try { await fsp.access(actual.path,fs.constants.R_OK); } catch { throw new Error('影片文件暂时无法读取，请检查硬盘或 NAS 连接。'); }
+    const executable=toolPath('mpv',settings.mpvPath);
+    if(!executable)throw new Error('未找到 mpv，请在播放设置中指定 mpv.exe。');
+    return player.start(executable,actual);
   });
-  ipcMain.on('window:action', (_, action) => {
-    if (action === 'minimize') window.minimize();
-    if (action === 'maximize') window.isMaximized() ? window.unmaximize() : window.maximize();
-    if (action === 'close') window.close();
+  ipcMain.on('window:action',(_,action)=>{
+    if(action==='minimize')window.minimize();
+    if(action==='maximize')window.isMaximized()?window.unmaximize():window.maximize();
+    if(action==='close')window.close();
   });
 }
 
@@ -100,13 +123,16 @@ async function serveLocalMedia(request) {
   if (range) headers['Content-Range'] = `bytes ${range.start}-${range.end}/${stat.size}`;
   if (request.method === 'HEAD') return new Response(null, { status: range ? 206 : 200, headers });
   const stream = fs.createReadStream(filename, range || undefined);
+  const abort = () => stream.destroy();
+  request.signal.addEventListener('abort', abort, {once:true});
+  stream.once('close', () => request.signal.removeEventListener('abort', abort));
   return new Response(Readable.toWeb(stream), { status: range ? 206 : 200, headers });
 }
 
 async function createWindow() {
   window = new BrowserWindow({
     width: 1440, height: 1000, minWidth: 920, minHeight: 650, frame: false,
-    backgroundColor: '#151619', title: 'Luma', icon: path.join(__dirname, '../dist/luma.png'),
+    backgroundColor: settings.theme==='light'?'#f6f6f8':'#151619', title: 'Luma', icon: path.join(__dirname, '../dist/luma.png'),
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true },
     show: false,
   });
@@ -122,13 +148,30 @@ if (!acquiredLock) app.quit();
 else {
   app.on('second-instance', () => { if (window) { if (window.isMinimized()) window.restore(); window.focus(); } });
   app.whenReady().then(async () => {
-    library = await readJson('library.json', null);
-    if (library) authorizeMedia(library.media);
-    settings = await readJson('settings.json', {});
+
+    settings = {tmdbToken:'',metadataLanguage:'zh-CN',defaultPlayer:'auto',mpvPath:'',autoScrape:true,watchFolders:true,...await readJson('settings.json', {})};
     if (settings.encryptedToken) { try { settings.tmdbToken = safeStorage.decryptString(Buffer.from(settings.encryptedToken, 'base64')); } catch { settings.tmdbToken = ''; } delete settings.encryptedToken; }
+    database=openLibraryDatabase(app.getPath('userData'));
+    service=new LibraryService({database,directory:app.getPath('userData'),getSettings:()=>settings,notify,authorize:media=>{allowedFiles.clear();authorizeMedia(media);},fetcher:networkFetch});
+    authorizeMedia(service.library?.media);
+    await service.init();
+    let lastProgress=0;
+    player.on('state',state=>notify('player:changed',state));
+    player.on('progress',state=>{
+      if(!state.mediaId || !(state.duration>0))return;
+      if(!state.ended && !state.force && Date.now()-lastProgress<2000)return;
+      lastProgress=Date.now();
+      service.patch(state.mediaId,{progress:Math.min(1,state.position/state.duration),duration:state.duration/60,...(state.ended?{watched:true}:{})});
+    });
     protocol.handle('luma-media', serveLocalMedia);
     wireIpc();
     await createWindow();
+    service.enqueue((service.library?.media||[]).filter(m=>m.path && !m.missing && (!m.technical || (settings.autoScrape && settings.tmdbToken && ((!m.metadataOrigin && !m.tmdbId && m.metadataStatus!=='review') || (m.tmdbId && !m.certificationCheckedAt))))));
   }).catch(error => { dialog.showErrorBox('Luma 无法启动', error.message); app.quit(); });
+  let closing=false;
+  app.on('before-quit',event=>{
+    if(closing)return;event.preventDefault();closing=true;
+    Promise.all([player.stop(),service?.close()]).finally(()=>{database?.close();app.quit();});
+  });
   app.on('window-all-closed', () => app.quit());
 }

@@ -52,15 +52,30 @@ test('播放拖动所需的 HTTP Range：完整、开放、后缀、越界与空
 
 test('TMDB 凭据错误不伪造结果，影片匹配保留本地路径', async () => {
   const item = { id: 'original', title: 'Dune', path: '/movies/Dune.mkv' };
-  await assert.rejects(searchMetadata(item, 'Dune', 'movie', ''), /Token/);
+  await assert.rejects(searchMetadata(item, 'Dune', 'movie', ''), /API Key/);
   await assert.rejects(searchMetadata(item, 'Dune', 'movie', 'invalid', 'zh-CN', async () => ({ ok: false, status: 401 })), /凭据无效/);
   const results = await searchMetadata(item, 'Dune', 'movie', 'test', 'zh-CN', async (url, options) => {
     assert.equal(url.searchParams.get('query'), 'Dune');
-    assert.equal(options.headers.Authorization, 'Bearer test');
+    assert.equal(options.headers.get('Authorization'), 'Bearer test');
     return { ok: true, json: async () => ({ results: [{ id: 438631, title: '沙丘', original_title: 'Dune', release_date: '2021-09-15', overview: '沙丘的故事。', vote_average: 7.8, poster_path: '/poster.jpg', backdrop_path: '/backdrop.jpg' }] }) };
   });
   assert.equal(results[0].id, 'original');
   assert.equal(results[0].path, item.path);
   assert.equal(results[0].title, '沙丘');
   assert.equal(results[0].year, 2021);
+});
+
+test('TMDB API Key and pasted Bearer token use the correct authentication methods', async () => {
+  const item={id:'sample',title:'Captain Marvel'};
+  const key='0123456789abcdef0123456789abcdef';
+  await searchMetadata(item,item.title,'movie',key,'zh-CN',async(url,options)=>{
+    assert.equal(url.searchParams.get('api_key'),key);
+    assert.equal(options.headers.has('Authorization'),false);
+    return new Response(JSON.stringify({results:[]}));
+  });
+  await searchMetadata(item,item.title,'movie','Bearer sample.token','zh-CN',async(url,options)=>{
+    assert.equal(url.searchParams.has('api_key'),false);
+    assert.equal(options.headers.get('Authorization'),'Bearer sample.token');
+    return new Response(JSON.stringify({results:[]}));
+  });
 });

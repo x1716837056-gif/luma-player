@@ -1,9 +1,12 @@
+import { parseRelease as parseFilename } from '../shared/filename.mjs';
+import { TMDB } from 'tmdb-ts';
+import { tmdbRequest } from '../shared/tmdb-auth.mjs';
 import type { Library, Media, Settings } from './types';
 import { demoLibrary } from './data';
 
 const LIBRARY_KEY = 'luma.library.v1';
 const SETTINGS_KEY = 'luma.settings.v1';
-export const defaultSettings: Settings = { tmdbToken: '', metadataLanguage: 'zh-CN', autoplay: true, defaultPlayer: 'native', mpvPath: '' };
+export const defaultSettings: Settings = { theme: 'dark', tmdbToken: '', metadataLanguage: 'zh-CN', autoplay: true, defaultPlayer: 'auto', mpvPath: '', autoScrape: true, watchFolders: true };
 
 export async function loadLibrary(): Promise<Library> {
   if (window.desktop) return (await window.desktop.loadLibrary()) ?? structuredClone(demoLibrary);
@@ -28,14 +31,7 @@ export async function saveSettings(settings: Settings) {
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
 }
 
-export function parseFilename(name: string): Pick<Media, 'title' | 'originalTitle' | 'year' | 'kind' | 'episode'> {
-  const stem = name.replace(/\.[^.]+$/, '');
-  const year = [...stem.matchAll(/(?:^|[.\s_([])((?:19|20)\d{2})(?=[.\s_)\]]|$)/g)].filter(match => Number(match[1]) <= new Date().getFullYear() + 2).at(-1);
-  const episode = stem.match(/\bS(\d{1,2})[. _-]*E(\d{1,3})\b/i);
-  const cut = Math.min(...[year?.index, episode?.index, stem.search(/\b(?:2160p|1080p|720p|bluray|webrip|web-dl|x265|x264)\b/i)].filter((n): n is number => n !== undefined && n >= 0), stem.length);
-  const title = stem.slice(0, cut).replace(/[._]/g, ' ').replace(/[\s([\]-]+$/, '').trim() || stem;
-  return { title, originalTitle: title, year: year ? Number(year[1]) : 0, kind: episode ? 'tv' : 'movie', episode: episode ? `第 ${Number(episode[1])} 季 · 第 ${Number(episode[2])} 集` : undefined };
-}
+export { parseRelease as parseFilename } from '../shared/filename.mjs';
 
 export function importBrowserFiles(files: FileList): Library {
   const media: Media[] = Array.from(files).filter(file => /\.(mp4|mkv|webm|mov|avi|m4v|ts|m2ts|wmv|flv)$/i.test(file.name)).map((file, index) => ({
@@ -50,14 +46,14 @@ export function importBrowserFiles(files: FileList): Library {
 
 export async function searchMetadata(item: Media, query: string, kind: Media['kind'], settings: Settings): Promise<Media[]> {
   if (window.desktop) return window.desktop.scrape(item, query, kind);
-  if (!settings.tmdbToken.trim()) throw new Error('请先在设置中填写 TMDB API Read Access Token。');
-  const url = new URL(`https://api.themoviedb.org/3/search/${kind}`);
-  url.searchParams.set('query', query);
-  url.searchParams.set('language', settings.metadataLanguage);
-  url.searchParams.set('include_adult', 'false');
-  const response = await fetch(url, { headers: { Authorization: `Bearer ${settings.tmdbToken.trim()}` } });
-  if (!response.ok) throw new Error(response.status === 401 ? 'TMDB 凭据无效，请检查 Read Access Token。' : `TMDB 请求失败（${response.status}），请检查网络后重试。`);
-  const data = await response.json();
+  if (!settings.tmdbToken.trim()) throw new Error('请先在设置中填写 TMDB API Key 或读取令牌。');
+  const tmdb = new TMDB(settings.tmdbToken, {fetch: (url, options) => {
+    const request = tmdbRequest(String(url), options, settings.tmdbToken);
+    return fetch(request.url, request.options);
+  }});
+  const language = settings.metadataLanguage === 'en-US' ? 'en-US' : settings.metadataLanguage === 'zh-TW' ? 'zh-TW' : 'zh-CN';
+  const options = {query,language: language as 'zh-CN' | 'zh-TW' | 'en-US',include_adult:false};
+  const data = await (kind === 'movie' ? tmdb.search.movies(options) : tmdb.search.tvShows(options));
   return data.results.slice(0, 8).map((result: Record<string, any>): Media => ({ ...item,
     tmdbId: result.id, kind, title: result.title || result.name, originalTitle: result.original_title || result.original_name,
     year: Number((result.release_date || result.first_air_date || '').slice(0, 4)),

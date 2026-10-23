@@ -1,0 +1,1 @@
+export function parseRelease(filename: string): { title: string; originalTitle: string; year: number; kind: 'movie' | 'tv'; episode?: string; season?: number; episodeNumber?: number; release: {resolution?: string; videoCodec?: string; audioCodec?: string; source?: string} };

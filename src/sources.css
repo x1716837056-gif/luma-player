@@ -1,0 +1,40 @@
+.app-shell { --sidebar-size: 224px; --content-gutter: 37px; }
+.sidebar>nav[aria-label="主导航"], .sidebar>.brand { flex-shrink: 0; }
+.source-navigation { display: flex; flex-direction: column; flex: 0 1 auto; min-height: 43px; overflow: hidden; }
+.source-scroll { min-height: 0; overflow-x: hidden; overflow-y: auto; scrollbar-width: thin; padding-right: 2px; }
+.source-navigation>.nav-item { flex-shrink: 0; }
+.source-item { min-width: 0; flex-shrink: 0; }
+.source-item>svg { flex-shrink: 0; width: 17px; height: 17px; }
+.source-item>.source-label { display: block; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 20px; }
+.source-item>.status-dot { margin-left: 0; flex-shrink: 0; }
+.sidebar-bottom { flex-shrink: 0; }
+.toolbar-location { min-width: 0; flex: 1; padding-right: 24px; }
+.toolbar-title { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.toolbar-actions { flex-shrink: 0; }
+.hero-source { min-width: 0; max-width: calc(100% - 100px); }
+.hero-source>svg { flex-shrink: 0; }
+.hero-source>span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.collection-heading>div:first-child { min-width: 0; }
+.collection-heading h1 { overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.sources-grid>.source-card { min-width: 0; }
+.source-card h3 { overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.6; min-height: 2lh; }
+.source-card>p { max-width: 100%; }
+.library-taskbar, .mpv-panel { left: calc(var(--sidebar-size) + var(--content-gutter)); right: var(--content-gutter); }
+@media (min-width: 1600px) { .app-shell { --sidebar-size: 244px; --content-gutter: 45px; } }
+@media (max-width: 1180px) { .app-shell { --sidebar-size: 199px; --content-gutter: 27px; } }
+@media (max-width: 960px) { .app-shell { --sidebar-size: 180px; } }
+@media (max-height: 780px) {
+  .sidebar .brand { height: 84px; }
+  .sidebar>nav[aria-label="主导航"] .nav-item { height: 36px; margin-bottom: 2px; }
+  .sidebar .source-heading { margin-top: 18px; }
+  .sidebar-bottom { padding-top: 12px; }
+  .sidebar-bottom .library-health { display: none; }
+}
+@media (max-width: 680px) {
+  .app-shell { --sidebar-size: 63px; --content-gutter: 21px; }
+  .source-item { position: relative; justify-content: center; padding: 0; }
+  .source-item>.source-label { display: none; }
+  .source-item>.status-dot { position: absolute; display: block; right: 7px; top: 10px; }
+  .source-scroll { padding-right: 0; }
+  .toolbar-location { padding-right: 12px; }
+}

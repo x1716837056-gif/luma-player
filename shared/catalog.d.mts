@@ -1,0 +1,11 @@
+type CatalogMedia={genre?:string[];year?:number;certification?:string;certificationRegion?:string;minimumAge?:number};
+export type CatalogFilters={genre:string;age:string;year:string};
+export const genreGroups:{id:string;label:string;genres:string[]}[];
+export const ageGroups:{id:string;label:string}[];
+export function certificationAge(value?:string,region?:string):number|null;
+export function minimumAge(media:CatalogMedia):number|null;
+export function ageGroup(media:CatalogMedia):string;
+export function matchesGenre(media:CatalogMedia,id:string):boolean;
+export function matchesYear(media:CatalogMedia,value:string,now?:number):boolean;
+export function matchesCatalog(media:CatalogMedia,filters:CatalogFilters):boolean;
+export function extractCertification(details:unknown,kind:string,language?:string):{certification?:string;certificationRegion?:string;minimumAge?:number};

@@ -1,7 +1,7 @@
 import { chromium, expect } from '@playwright/test';
 import assert from 'node:assert/strict';
 
-const browser = await chromium.launch({ executablePath: '/usr/bin/chromium', args: ['--no-sandbox'] });
+const browser = await chromium.launch(process.platform === 'win32' ? {channel:'msedge'} : {executablePath:'/usr/bin/chromium'});
 try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1060 } });
   const errors = [];
@@ -37,7 +37,7 @@ try {
   await page.getByRole('button', { name: '列表视图', exact: true }).click();
   await expect(page.locator('.media-list-row')).toHaveCount(10);
   await page.getByRole('button', { name: '海报视图', exact: true }).click();
-  await page.getByRole('button', { name: '科幻', exact: true }).click();
+  await page.getByRole('button', { name: '科幻与奇幻', exact: true }).click();
   assert.equal(await page.locator('.poster-card').count(), 6);
   console.log('PASS: media type, genre filtering and list/grid views');
 

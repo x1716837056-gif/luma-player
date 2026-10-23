@@ -6,14 +6,10 @@ const { XMLParser } = require('fast-xml-parser');
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.mkv', '.webm', '.mov', '.avi', '.m4v', '.ts', '.m2ts', '.wmv', '.flv']);
 const stableId = value => crypto.createHash('sha256').update(value).digest('hex').slice(0, 20);
 
+const { parseRelease } = require('../shared/filename.mjs');
 function parseFilename(filename) {
-  const stem = path.parse(filename).name;
-  const year = [...stem.matchAll(/(?:^|[.\s_([])((?:19|20)\d{2})(?=[.\s_)\]]|$)/g)].filter(match => Number(match[1]) <= new Date().getFullYear() + 2).at(-1);
-  const episode = stem.match(/(?:^|[.\s_-])S(\d{1,2})[. _-]*E(\d{1,3})(?=[.\s_-]|$)/i);
-  const tokens = [year?.index, episode?.index, stem.search(/\b(?:2160p|1080p|720p|bluray|webrip|web-dl|x265|x264)\b/i)].filter(index => index !== undefined && index >= 0);
-  const cut = Math.min(...tokens, stem.length);
-  const title = stem.slice(0, cut).replace(/[._]/g, ' ').replace(/[\s([\]-]+$/, '').trim() || stem;
-  return { title, originalTitle: title, year: year ? Number(year[1]) : 0, kind: episode ? 'tv' : 'movie', episode: episode ? `第 ${Number(episode[1])} 季 · 第 ${Number(episode[2])} 集` : undefined };
+  const {title,originalTitle,year,kind,episode}=parseRelease(filename);
+  return {title,originalTitle,year,kind,episode};
 }
 
 async function readSmallFile(filename, maxBytes = 2 * 1024 * 1024) {
@@ -82,13 +78,14 @@ async function scanFolder(folder, type = 'local') {
       if (entry.isSymbolicLink()) continue;
       if (entry.isDirectory()) { pending.push(filename); continue; }
       if (!entry.isFile() || !VIDEO_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) continue;
-      const parsed = parseFilename(entry.name);
+      const parsed = parseRelease(entry.name);
       const info = await fs.stat(filename).catch(() => null);
+      const sidecar = await readNfo(filename);
       media.push({
         id: stableId(filename.toLowerCase()), ...parsed, genre: [], duration: 0, rating: '', certification: '', poster: '', backdrop: '',
         description: '尚未匹配影片资料。可以在影片详情中手动匹配元数据。',
-        sourceId, path: filename, videoUrl: mediaUrl(filename), quality: /2160p|4k/i.test(entry.name) ? '4K' : /1080p/i.test(entry.name) ? '1080P' : /720p/i.test(entry.name) ? '720P' : '本地',
-        addedAt: info?.birthtimeMs || Date.now(), imported: true, ...await readNfo(filename),
+        fileSize: info?.size, modifiedAt: info?.mtimeMs, sourceId, path: filename, videoUrl: mediaUrl(filename), quality: /2160p|4k/i.test(entry.name) ? '4K' : /1080p/i.test(entry.name) ? '1080P' : /720p/i.test(entry.name) ? '720P' : '本地',
+        addedAt: info?.birthtimeMs || Date.now(), imported: true, ...sidecar, ...(Object.keys(sidecar).some(key => !['poster','backdrop'].includes(key)) ? {metadataOrigin:'nfo',metadataStatus:'matched'} : {}),
       });
     }
   }
@@ -106,19 +103,6 @@ function parseRange(header, size) {
   return { start, end };
 }
 
-async function searchMetadata(media, query, kind, token, language = 'zh-CN', fetcher = fetch) {
-  if (!token?.trim()) throw new Error('请先在设置中填写 TMDB API Read Access Token。');
-  if (!['movie', 'tv'].includes(kind) || typeof query !== 'string' || query.length > 500) throw new Error('影片搜索条件无效。');
-  const url = new URL(`https://api.themoviedb.org/3/search/${kind}`);
-  url.search = new URLSearchParams({ query, language, include_adult: 'false' }).toString();
-  const response = await fetcher(url, { headers: { Authorization: `Bearer ${token.trim()}` }, signal: AbortSignal.timeout(20000) });
-  if (!response.ok) throw new Error(response.status === 401 ? 'TMDB 凭据无效，请检查 Read Access Token。' : `TMDB 请求失败（${response.status}）。`);
-  const data = await response.json();
-  return data.results.slice(0, 8).map(result => ({ ...media, tmdbId: result.id, kind,
-    title: result.title || result.name, originalTitle: result.original_title || result.original_name,
-    year: Number((result.release_date || result.first_air_date || '').slice(0, 4)), description: result.overview || '暂无中文简介。',
-    rating: Number(result.vote_average).toFixed(1), poster: result.poster_path ? `https://image.tmdb.org/t/p/w500${result.poster_path}` : '', backdrop: result.backdrop_path ? `https://image.tmdb.org/t/p/w1280${result.backdrop_path}` : '',
-  }));
-}
+const { searchMetadata } = require('./metadata.cjs');
 
 module.exports = { parseFilename, readNfo, scanFolder, parseRange, searchMetadata, mediaUrl };

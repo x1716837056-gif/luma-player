@@ -1,0 +1,32 @@
+import {_electron as electron} from 'playwright';
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+const fixture=await fs.mkdtemp(path.join(os.tmpdir(),'luma-catalog-'));
+let app;
+try {
+  app=await electron.launch({...(process.env.LUMA_PACKAGED_EXE?{executablePath:process.env.LUMA_PACKAGED_EXE}:{}),args:[...(process.env.LUMA_PACKAGED_EXE?[]:['.']),`--user-data-dir=${fixture}`],timeout:30000});
+  const page=await app.firstWindow(),errors=[];page.on('pageerror',e=>errors.push(e.message));
+  await page.getByRole('button',{name:'影片详情',exact:true}).waitFor();
+  await page.getByRole('button',{name:'电影',exact:true}).click();
+  assert.equal(await page.locator('.poster-card').count(),10);
+  await page.getByRole('button',{name:'科幻与奇幻',exact:true}).click();
+  assert.equal(await page.locator('.poster-card').count(),6);
+  await page.getByRole('combobox',{name:'上映年份分类',exact:true}).selectOption('2016');
+  assert.equal(await page.locator('.poster-card').count(),1);
+  assert.equal(await page.getByRole('button',{name:'查看 降临',exact:true}).count(),1);
+  await page.getByRole('combobox',{name:'建议观看年龄分类',exact:true}).selectOption('18');
+  await page.getByText('没有符合分类的影片',{exact:true}).waitFor();
+  await page.getByRole('button',{name:'清除分类',exact:true}).click();
+  assert.equal(await page.locator('.poster-card').count(),10);
+  await page.getByRole('combobox',{name:'上映年份分类',exact:true}).selectOption('decade:2020');
+  assert.equal(await page.locator('.poster-card').count(),5);
+  await fs.mkdir('reference',{recursive:true});await page.screenshot({path:'reference/movie-categories-dark.png'});
+  await page.getByRole('button',{name:'切换到浅色模式',exact:true}).click();
+  await page.waitForFunction(()=>document.documentElement.dataset.theme==='light');
+  await page.screenshot({path:'reference/movie-categories-light.png'});
+  await page.setViewportSize({width:960,height:650});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+  assert.deepEqual(errors,[]);
+  console.log('PASS: Netflix-style movie genres, age/year intersection, empty-result reset, decade filtering and both themes');
+}finally{await app?.close();await fs.rm(fixture,{recursive:true,force:true});}

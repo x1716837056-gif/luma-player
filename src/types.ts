@@ -8,6 +8,10 @@ export type Media = {
   duration: number;
   rating: string;
   certification: string;
+  certificationRegion?: string;
+  minimumAge?: number;
+  certificationCheckedAt?: number;
+  certificationError?: string;
   poster: string;
   backdrop: string;
   description: string;
@@ -24,6 +28,14 @@ export type Media = {
   addedAt: number;
   tmdbId?: number;
   imported?: boolean;
+  season?: number;
+  episodeNumber?: number;
+  missing?: boolean;
+  metadataOrigin?: 'nfo' | 'tmdb' | 'manual';
+  metadataStatus?: 'matched' | 'needs-token' | 'review' | 'failed';
+  metadataError?: string;
+  probeError?: string;
+  technical?: { container?: string; videoCodec?: string; width?: number; height?: number; hdr: boolean; colorTransfer?: string; durationSeconds: number; tracks: {index: number; type: string; codec?: string; language?: string; title?: string; channels?: number}[]; probedAt: number };
 };
 
 export type Source = {
@@ -35,8 +47,10 @@ export type Source = {
 };
 
 export type Library = { media: Media[]; sources: Source[]; demo: boolean };
-export type Settings = { tmdbToken: string; metadataLanguage: string; autoplay: boolean; defaultPlayer: 'native' | 'mpv'; mpvPath: string; };
+export type Settings = { theme: 'dark' | 'light'; tmdbToken: string; metadataLanguage: string; autoplay: boolean; defaultPlayer: 'auto' | 'native' | 'mpv'; mpvPath: string; autoScrape: boolean; watchFolders: boolean; };
 export type ScanResult = { media: Media[]; source: Source; warnings: string[] };
+export type TaskStatus = { running: boolean; completed: number; total: number; matched: number; review: number; failed: number; queued: number; active?: number };
+export type PlayerState = { active: boolean; error?: string; mediaId?: string; title?: string; position?: number; duration?: number; paused?: boolean; tracks?: {id: number; type: string; title?: string; lang?: string; selected?: boolean}[] };
 
 declare global {
   interface Window {
@@ -49,7 +63,18 @@ declare global {
       selectFolder(): Promise<string | null>;
       scanFolder(path: string, type: Source['type']): Promise<ScanResult>;
       scrape(media: Media, query: string, kind: Media['kind']): Promise<Media[]>;
-      playMpv(media: Media): Promise<void>;
+      playMpv(media: Media): Promise<PlayerState>;
+      updateMedia(id: string, patch: Partial<Media>): Promise<Media>;
+      applyMetadata(id: string, candidate: Media): Promise<Media>;
+      probeMedia(id: string): Promise<Media>;
+      startTasks(): Promise<TaskStatus>;
+      cancelTasks(): Promise<void>;
+      taskStatus(): Promise<TaskStatus>;
+      playerState(): Promise<PlayerState>;
+      playerControl(action: 'pause' | 'seek' | 'aid' | 'sid' | 'stop', value?: number | boolean | 'no'): Promise<void>;
+      onLibraryChanged(callback: (library: Library) => void): () => void;
+      onTasksChanged(callback: (status: TaskStatus) => void): () => void;
+      onPlayerChanged(callback: (state: PlayerState) => void): () => void;
       revealFile(path: string): Promise<void>;
       windowAction(action: 'minimize' | 'maximize' | 'close'): void;
     };

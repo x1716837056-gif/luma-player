@@ -2,13 +2,25 @@
 
 按照 Infuse Mac 的视觉方向制作：深色侧栏、暖金色选中态、宽幅影片背景、圆角海报墙、半透明弹窗和简洁播放控件。面向本地硬盘与 NAS 共享文件夹。
 
-这是可操作的 **0.1.0 界面预览版**。界面使用 React / TypeScript / CSS，Windows 外壳使用 Electron。代码没有使用 Infuse 的源码、图标或品牌素材。
+这是 **0.1.1 功能增强版**。界面使用 React / TypeScript / CSS，Windows 外壳使用 Electron。代码没有使用 Infuse 的源码、图标或品牌素材。
 
 ## 直接使用 Windows 版本
 
-在 Windows 10 / 11 x64 上运行 `Luma 0.1.0.exe`。这是免安装预览版。
+在 Windows 10 / 11 x64 上运行 `Luma-Integrated.exe`。这是免安装预览版。
 
 首次启动展示明确标注的示例影音库。点击「添加影片」选择自己的文件夹后，会自动替换示例。也可以到「设置 → 影音库与刮削」清空示例库。
+
+右上角太阳 / 月亮按钮可切换浅色与深色模式，影音库、详情、来源与设置同步切换；刷新和重新启动后保留选择。
+
+「电影」页提供影片类型、建议观看年龄、上映年份组合分类。类型参考 Netflix 的类别浏览：动作与冒险、科幻与奇幻、悬疑与惊悚、喜剧、剧情、爱情、犯罪、恐怖、动画、儿童与家庭、纪录片、战争、历史、音乐与歌舞及西部；年龄分组为全年龄、7+、10+、13+、16+、18+和未分级。年份支持近 5 年、具体年份和年代。年龄按 TMDB / NFO 地区分级归组，缺少可靠分级时保留未分级；已有 TMDB 影片可单独补全分级，不覆盖手动资料、收藏或进度。
+
+本机已恢复开发环境时，可以双击源码目录里的 `Start-Luma.cmd`。本机打包的免安装程序位于 `release-final/Luma 0.1.1.exe`。
+
+设置中填写 TMDB API Key 或读取令牌后，可自动匹配导入的影片，或点击底部「自动匹配未整理影片」。仅唯一且片名、年份足够匹配的候选会自动应用；不明确的结果留待手动确认。NFO 和手动修正的资料不会被自动刮削覆盖。后台任务支持并发限制、请求节流、瞬时错误重试和取消；海报缓存在本机。
+
+默认使用随附 mpv 播放真实影片，支持 HEVC / MKV 等格式。独立视频窗口内提供悬浮进度、倍速、音量、音轨、字幕与全屏控件，影音库保留简洁控制条，关闭窗口时保存最终位置。设置可优先使用内置播放器；HEVC 等不兼容编码或解码失败时自动切换 mpv。
+
+媒体库使用本机 `library.sqlite`；首次启动会迁移旧 `library.json` 并保留 `library.json.pre-sqlite.bak`，不会删除原 JSON。目录监听支持本地事件和 NAS 轮询，来源断开或文件缺失时保留原资料、收藏和观看位置。探测和刮削结果都存放在应用数据目录，不写回影片目录。
 
 NAS 使用 Windows UNC 路径，例如 `\\NAS\Movies`。先在资源管理器中连接共享文件夹并保存凭据，再在「添加影片 → NAS / SMB」输入路径。当前不包含局域网自动发现和独立 SMB 账号管理。
 
@@ -20,13 +32,14 @@ NAS 使用 Windows UNC 路径，例如 `\\NAS\Movies`。先在资源管理器中
 | 影音库 | 电影 / 剧集、中文 / 原名搜索、类型筛选、排序、海报 / 列表视图 |
 | 详情 | 大幅背景、海报、简介、演职人员、评分、收藏、已看标记、文件位置 |
 | 本地导入 | 递归扫描视频，读取同名 NFO、movie.nfo、tvshow.nfo 与常见海报 / 背景文件 |
-| 刮削 | 设置 TMDB Read Access Token 后，在影片详情中手动搜索和选择匹配结果 |
+| 刮削 | tmdb-ts 搜索与详情，保守自动匹配、手动纠错、后台任务与本地海报缓存 |
 | 播放 | 内置 MP4 / WebM 等 Chromium 支持的格式，进度拖动、续播、音量、倍速、全屏、外挂 WebVTT 字幕 |
-| 外部 mpv | 在设置中指定 mpv.exe，可播放 MKV、HEVC 等更多格式；当前不回传外部播放进度 |
-| 存储 | 本机 JSON 持久化影片、来源、收藏、观看进度；Windows 凭据加密保存 TMDB 令牌 |
+| 外部 mpv | 随附 mpv，JSON IPC 回传进度、暂停、音轨和内封字幕；可指定自有播放器路径 |
+| 存储 | better-sqlite3 事务保存影片、来源和任务，迁移旧 JSON；Windows 凭据加密保存 TMDB 令牌 |
+| 探测 | ffprobe 读取真实容器、编码、分辨率、时长、音轨、字幕与 HDR 片源参数 |
 | 离线来源 | 刷新失败时标记来源离线，并保留已有资料 |
 
-本版本尚未内嵌 libmpv，也没有自动批量在线刮削、完整电视剧季集聚合或 HDR 输出控制。示例库的播放按钮会打开明确标记的 Big Buck Bunny 演示片段，不包含示例影片正片。
+本版本尚未内嵌 libmpv，也没有完整电视剧季集聚合、自动下一集、BDMV/ISO 原盘聚合或 HDR 显示输出验证。HDR 标签只表示 ffprobe 识别到的源参数。示例库的播放按钮会打开明确标记的 Big Buck Bunny 演示片段，不包含示例影片正片。
 
 网页预览支持浏览界面与导入浏览器选取的文件；直接读取 NAS 路径、NFO sidecar 与外部 mpv 需要桌面版。浏览器重启后需要重新选择本地文件夹以恢复视频访问权限。
 
@@ -58,12 +71,25 @@ npm run test:browser
 npm run test:desktop
 ```
 
-Linux 检查脚本默认使用 `/usr/bin/chromium` 和 Electron 的 headless Ozone。其他开发环境可调整脚本中的浏览器路径与启动参数。
+首次打包前需准备 `tools/` 中的 mpv 与 ffprobe，运行 `powershell -File scripts/setup-tools.ps1`。打包保留外部程序及其许可文件，准确来源和校验值见 `THIRD-PARTY.md`。
+
+额外验证命令：
+
+```sh
+node scripts/smoke-mpv-ui.mjs
+node scripts/test-real-library.cjs "Z:\\a测试"
+node scripts/test-real-library.cjs "Z:\\测试\\4K-HDR 演示片" "01_"
+```
+
+真实目录测试须显式提供路径，只读取媒体；临时数据库、测试视频和缓存均在本机临时目录。`smoke-mpv-ui.mjs` 额外使用完整 FFmpeg 构建中的 ffmpeg.exe 生成无声临时测试片，不修改原文件。
 
 ## 文件结构
 
 ```text
-src/App.tsx          界面、详情、来源、设置和播放交互
+src/App.tsx          影音库、详情、来源与设置
+src/PlayerModal.tsx  内置播放界面与兼容播放器回退
+src/player.css       悬浮播放器控件、菜单和淡出动效
+electron/player/luma-osc.lua  真实 mpv 视频窗口的悬浮控件
 src/styles.css      视觉样式与窗口尺寸适配
 src/storage.ts      网页预览存储与 TMDB 客户端
 electron/main.cjs   Windows 窗口、IPC、文件协议与持久化
@@ -75,7 +101,9 @@ reference/          界面截图（工作目录中，源码压缩包不包含官
 
 ## 验证范围
 
-已进行 TypeScript / Vite 构建、核心测试、Chromium 交互检查与 Linux Electron 文件导入 / 播放检查。Windows 可执行文件由 electron-builder 交叉打包；当前环境没有 Windows，尚未完成 Windows 实机和真实 NAS 验证。
+2026-10-23 已在 Windows 完成 TypeScript / Vite 构建、10 项核心及服务测试、Electron 文件导入 / NFO / 本地海报 / MP4 拖动续播 / SQLite / 离线保留测试，以及 mpv 控制条端到端测试。真实 mpv 视频窗口与内置播放器均改用悬浮控件，已验证速度菜单、暂停、跳转、自动隐藏和全屏。Z 盘追加实测《坚如磐石》HEVC MP4 与《惊奇队长》4K HEVC MKV：旧版强制内置设置可自动分流到兼容内核，使用已加密保存的 API Key 自动获取中文资料、演职员、海报与背景缓存。
+
+TMDB 支持 API Key 与读取令牌，凭据由系统加密保存。尚未完成整盘逐片兼容性检查、HDR 显示器输出和多声道设备输出。历史交接文档 `HANDOFF.md` 描述的是迁移前基线，当前行为以本 README 与实际代码为准。
 
 ## 素材与依赖
 
