@@ -15,7 +15,7 @@ await fs.writeFile(path.join(movies, 'movie.nfo'), '<movie><title>测试影片 �
 let app;
 await fs.mkdir('reference', {recursive:true});
 try {
-  app = await electron.launch({ args: ['.', ...(process.platform === 'linux' ? ['--ozone-platform=headless'] : []), `--user-data-dir=${path.join(fixture, 'profile')}`], timeout: 30000 });
+  app = await electron.launch({ ...(process.env.LUMA_PACKAGED_EXE?{executablePath:process.env.LUMA_PACKAGED_EXE}:{}),args: [...(process.env.LUMA_PACKAGED_EXE?[]:['.']), ...(process.platform === 'linux' ? ['--ozone-platform=headless'] : []), `--user-data-dir=${path.join(fixture, 'profile')}`], timeout: 30000 });
   let page = await app.firstWindow();
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
@@ -83,7 +83,7 @@ try {
   await app.close();
   app = null;
   await fs.rename(movies, `${movies}-offline`);
-  app = await electron.launch({args:['.', `--user-data-dir=${path.join(fixture,'profile')}`],timeout:30000});
+  app = await electron.launch({...(process.env.LUMA_PACKAGED_EXE?{executablePath:process.env.LUMA_PACKAGED_EXE}:{}),args:[...(process.env.LUMA_PACKAGED_EXE?[]:['.']), `--user-data-dir=${path.join(fixture,'profile')}`],timeout:30000});
   page = await app.firstWindow();
   await page.getByRole('button', { name: '查看 测试影片 · 降临', exact: true }).waitFor();
   await page.getByRole('button', { name: '刷新影音库', exact: true }).first().click();

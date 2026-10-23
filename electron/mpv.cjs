@@ -56,6 +56,10 @@ class MpvPlayer extends EventEmitter {
         try { this.message(JSON.parse(line)); } catch { /* Ignore unrelated malformed events. */ }
       }
     });
+    await this.command(['set_property','user-data/luma-osc/media',{
+      title:media.title,originalTitle:media.originalTitle,year:media.year,description:media.description,
+      director:media.director,cast:media.cast,genre:media.genre,path:media.path,fileSize:media.fileSize,technical:media.technical,
+    }]);
     for(const [i,property] of ['time-pos','duration','pause','track-list'].entries()) await this.command(['observe_property',i+1,property]);
     // A connected IPC pipe alone does not prove the decoder produced video.
     let output;

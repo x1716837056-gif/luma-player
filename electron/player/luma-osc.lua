@@ -7,6 +7,7 @@ local last_activity, opacity, last_tick = mp.get_time(), 1, mp.get_time()
 local panel, menu_box, frame = {}, nil, {}
 local page = 0
 local last_visible
+local last_menu, context_at = false, {x=0,y=0}
 local function clamp(n, a, b) return math.max(a, math.min(b, n)) end
 local function prop(name, fallback) return mp.get_property_native(name, fallback) end
 local function clock(n)
@@ -53,6 +54,8 @@ local function icon(name, x, y, s, a)
         rect(x+2*s,y+4*s,20*s,16*s,3*s,'FFFFFF',a or 0)
         rect(x+3.4*s,y+5.4*s,17.2*s,13.2*s,2*s,'30302C',0)
         path(x,y,'m 6 10 l 11 10 m 14 10 l 18 10 m 6 14 l 9 14 m 12 14 l 18 14','FFFFFF',a,s,true)
+    elseif name == 'audio' then
+        path(x,y,'m 4 16 l 4 11 b 4 0 20 0 20 11 l 20 16 m 4 12 l 8 12 8 20 4 20 m 16 12 l 20 12 20 20 16 20','FFFFFF',a,s,true)
     elseif name == 'volume' then
         path(x,y,'m 3 9 l 7 9 12 5 12 19 7 15 3 15','FFFFFF',a,s)
         if prop('mute',false) then path(x,y,'m 16 9 l 22 15 m 22 9 l 16 15','FFFFFF',a,s,true)
@@ -66,6 +69,44 @@ end
 local function activity() last_activity = mp.get_time() end
 local function toggle_menu(kind) menu = menu == kind and nil or kind; page = 0; activity() end
 local function seek(n) mp.commandv('seek', clamp(n,0,prop('duration',0)), 'absolute+exact'); activity() end
+local languages={eng='英语',en='英语',chi='中文',zho='中文',zh='中文',cmn='普通话',yue='粤语',jpn='日语',ja='日语',kor='韩语',ko='韩语',fra='法语',fre='法语',fr='法语',deu='德语',ger='德语',de='德语',spa='西班牙语',es='西班牙语',rus='俄语',ru='俄语'}
+local function track_label(t)
+    local lang=languages[t.lang or t.language or ''] or t.lang or t.language or ''
+    local title=t.title or ''
+    if title~='' and title~=lang then return lang~='' and lang..' · '..title or title end
+    return lang~='' and lang or '轨道 '..(t.id or t.index or '')
+end
+local function info_lines()
+    local media=prop('user-data/luma-osc/media',{})
+    if menu=='overview' then
+        return {media.description or '暂无影片简介，请先在影音库匹配资料。','', '导演  '..(media.director or '暂无资料'), '类型  '..table.concat(media.genre or {},' / '), '演职人员  '..table.concat(media.cast or {},' / ')}
+    end
+    local tech=media.technical or {}
+    local rows={'分辨率  '..(tech.width and (tech.width..' × '..(tech.height or '')) or '尚未探测'), '视频编码  '..string.upper(tech.videoCodec or '未知'), '封装格式  '..(tech.container or '未知'), '动态范围  '..(tech.hdr and 'HDR 片源' or 'SDR / 未标注 HDR'),'', '音轨语言'}
+    local audio,subs={},{}
+    for _,t in ipairs(prop('track-list',{})) do
+        if t.type=='audio' then audio[#audio+1]=track_label(t)..'  '..string.upper(t.codec or '')
+        elseif t.type=='sub' then subs[#subs+1]=track_label(t)..'  '..string.upper(t.codec or '') end
+    end
+    rows[#rows+1]=#audio>0 and table.concat(audio,' / ') or '没有检测到音轨'
+    rows[#rows+1]='';rows[#rows+1]='字幕';rows[#rows+1]=#subs>0 and table.concat(subs,' / ') or '没有检测到内封字幕'
+    rows[#rows+1]='';rows[#rows+1]='文件位置';rows[#rows+1]=media.path or '未关联本地片源'
+    if media.fileSize then rows[#rows+1]=string.format('文件大小  %.2f GB',media.fileSize/1073741824) end
+    return rows
+end
+local function wrap_lines(rows,width)
+    local result={}
+    for _,value in ipairs(rows) do
+        local line,count='',0
+        for character in tostring(value):gmatch('[%z\1-\127\194-\244][\128-\191]*') do
+            local length=#character>1 and 2 or 1
+            if character=='\n' or count+length>width then result[#result+1]=line;line,count='',0 end
+            if character~='\n' then line=line..character;count=count+length end
+        end
+        result[#result+1]=line
+    end
+    return result
+end
 local function menu_rows()
     local rows = {}
     if menu == 'speed' then
@@ -73,16 +114,19 @@ local function menu_rows()
             local value=rate
             rows[#rows+1]={label=rate==1 and '正常速度' or rate..'×',selected=prop('speed',1)==rate,click=function() mp.set_property_number('speed',value);menu=nil end}
         end
-    else
-        rows[#rows+1]={label='音轨',heading=true}
+    elseif menu=='audio' then
         for _, t in ipairs(prop('track-list',{})) do
-            if t.type=='audio' then local id=t.id;rows[#rows+1]={label=t.title or t.lang or '音轨 '..id,selected=t.selected,click=function() mp.set_property_number('aid',id);menu=nil end} end
+            if t.type=='audio' then local id=t.id;rows[#rows+1]={label=track_label(t),selected=t.selected,click=function() mp.set_property_number('aid',id);menu=nil end} end
         end
-        rows[#rows+1]={label='字幕',heading=true}
+        if #rows==0 then rows[#rows+1]={label='没有可切换的音轨',heading=true} end
+    elseif menu=='subtitles' then
         rows[#rows+1]={label='关闭字幕',selected=prop('sid')==false or prop('sid')=='no',click=function() mp.set_property('sid','no');menu=nil end}
         for _, t in ipairs(prop('track-list',{})) do
-            if t.type=='sub' then local id=t.id;rows[#rows+1]={label=t.title or t.lang or '字幕 '..id,selected=t.selected,click=function() mp.set_property_number('sid',id);menu=nil end} end
+            if t.type=='sub' then local id=t.id;rows[#rows+1]={label=track_label(t),selected=t.selected,click=function() mp.set_property_number('sid',id);menu=nil end} end
         end
+    elseif menu=='context' then
+        rows[#rows+1]={label='影片简介',click=function()menu='overview';page=0 end}
+        rows[#rows+1]={label='片源信息',click=function()menu='source';page=0 end}
         rows[#rows+1]={label='画面异常？使用兼容解码',click=function() mp.set_property('hwdec','no');menu=nil;mp.osd_message('已切换兼容解码',2) end}
     end
     return rows
@@ -100,6 +144,7 @@ local function render()
     opacity=clamp(opacity+(visible and dt*7 or -dt*5),0,1)
     if last_visible ~= (opacity>0) then last_visible=opacity>0;mp.set_property_native('user-data/luma-osc/visible',last_visible) end
     frame,elements,menu_box={},{},nil
+    if last_menu~=menu then last_menu=menu;mp.set_property_native('user-data/luma-osc/menu',menu or false) end
     if opacity <= 0 then
         overlay:remove();mp.disable_key_bindings('luma-panel');mp.disable_key_bindings('luma-top');mp.disable_key_bindings('luma-menu');return
     end
@@ -117,17 +162,19 @@ local function render()
     local x,y,w=panel.x,panel.y,panel.w
     rect(x-1,y-1,w+2,130,23,'FFFFFF',219)
     rect(x,y,w,128,22,'29272A',37)
-    local center=x+w/2
-    button('volume',x+16,y+16,34,36,function()mp.commandv('cycle','mute')end,'静音');icon('volume',x+21,y+22,1,35)
+    local compact=w<600
+    local center=x+(compact and 36 or w/2)
+    if not compact then button('volume',x+16,y+16,34,36,function()mp.commandv('cycle','mute')end,'静音');icon('volume',x+21,y+22,1,35) end
     if w>540 then
         local v=button('volume-slider',x+59,y+21,72,26,nil,'音量');v.slider='volume'
         rect(v.x,v.y+11,v.w,3,1.5,'FFFFFF',205);rect(v.x,v.y+11,v.w*clamp(prop('volume',100)/100,0,1),3,1.5,'FFFFFF',45)
     end
-    button('rewind',center-89,y+10,42,48,function()mp.commandv('seek',-10,'relative+exact')end,'后退 10 秒');icon('rewind',center-82,y+20,1.05,20)
+    if not compact then button('rewind',center-89,y+10,42,48,function()mp.commandv('seek',-10,'relative+exact')end,'后退 10 秒');icon('rewind',center-82,y+20,1.05,20) end
     button('toggle',center-24,y+10,48,48,function()mp.commandv('cycle','pause');activity()end,'播放 / 暂停');rect(center-24,y+10,48,48,24,'FFFFFF',242);icon(prop('pause') and 'play' or 'pause',center-15,y+19,1.25)
-    button('forward',center+47,y+10,42,48,function()mp.commandv('seek',10,'relative+exact')end,'前进 10 秒');icon('forward',center+54,y+20,1.05,20)
-    button('speed',x+w-150,y+16,48,36,function()toggle_menu('speed')end,'播放速度');text(x+w-126,y+34,prop('speed',1)..'×',12,25,5,true)
-    button('tracks',x+w-96,y+16,34,36,function()toggle_menu('tracks')end,'音轨与字幕');icon('subtitles',x+w-91,y+22,1,30)
+    if not compact then button('forward',center+47,y+10,42,48,function()mp.commandv('seek',10,'relative+exact')end,'前进 10 秒');icon('forward',center+54,y+20,1.05,20) end
+    button('speed',x+w-196,y+16,48,36,function()toggle_menu('speed')end,'播放速度');text(x+w-172,y+34,prop('speed',1)..'×',12,25,5,true)
+    button('audio',x+w-146,y+14,42,44,function()toggle_menu('audio')end,'音轨语言');icon('audio',x+w-137,y+17,1,30);text(x+w-125,y+49,'语言',8,95,5)
+    button('subtitles',x+w-100,y+14,42,44,function()toggle_menu('subtitles')end,'字幕');icon('subtitles',x+w-91,y+17,1,30);text(x+w-79,y+49,'字幕',8,95,5)
     button('fullscreen',x+w-52,y+16,34,36,function()mp.commandv('cycle','fullscreen')end,'全屏');icon('fullscreen',x+w-47,y+22,1,30)
     local timeline=button('seek',x+24,y+69,w-48,22,nil);timeline.slider='seek'
     local position,duration=prop('time-pos',0),prop('duration',0)
@@ -141,7 +188,27 @@ local function render()
     text(x+24,y+104,clock(position),11,110)
     text(x+w-24,y+104,'−'..clock(duration-position),11,110,6)
     if prop('pause') then text(center,y+104,'已暂停',10,150,5) end
-    if menu then
+    if menu=='overview' or menu=='source' then
+        local media=prop('user-data/luma-osc/media',{})
+        local mw=math.min(640,W-40)
+        local lines=wrap_lines(info_lines(),math.floor((mw-48)/7.2))
+        local limit=math.max(3,math.floor((H-225)/24))
+        page=clamp(page,0,math.max(0,math.ceil(#lines/limit)-1))
+        local first,last=page*limit+1,math.min((page+1)*limit,#lines)
+        local mh=118+(last-first+1)*24+(#lines>limit and 38 or 0)
+        local bx,by=(W-mw)/2,math.max(20,(H-mh)/2)
+        menu_box={x=bx,y=by,w=mw,h=mh}
+        rect(bx-1,by-1,mw+2,mh+2,23,'FFFFFF',219);rect(bx,by,mw,mh,22,'27272D',10)
+        text(bx+26,by+26,menu=='overview' and '影片简介' or '片源信息',10,125)
+        text(bx+26,by+56,media.title or prop('media-title'),20,0,4,true,mw-84)
+        button('info-close',bx+mw-48,by+16,30,30,function()menu=nil end,'关闭影片信息');icon('close',bx+mw-43,by+21,.8,90)
+        for index=first,last do text(bx+26,by+98+(index-first)*24,lines[index],13,35,4,false,mw-52) end
+        if #lines>limit then
+            button('previous',bx+18,by+mh-37,64,28,function()page=math.max(0,page-1)end);text(bx+50,by+mh-23,'上一页',10,95,5)
+            text(bx+mw/2,by+mh-23,(page+1)..' / '..math.ceil(#lines/limit),10,120,5)
+            button('next',bx+mw-82,by+mh-37,64,28,function()page=math.min(math.ceil(#lines/limit)-1,page+1)end);text(bx+mw-50,by+mh-23,'下一页',10,95,5)
+        end
+    elseif menu then
         local rows=menu_rows()
         local limit=math.max(3,math.floor((H-235)/34)-2)
         page=clamp(page,0,math.max(0,math.ceil(#rows/limit)-1))
@@ -149,13 +216,15 @@ local function render()
         local mw=menu=='speed' and 190 or math.min(310,W-40)
         local mh=(last-first+1)*34+48+(#rows>limit and 34 or 0)
         local bx,by=x+w-mw,y-mh-16
+        if menu=='context' then bx=clamp(context_at.x,12,W-mw-12);by=clamp(context_at.y,12,H-mh-12) end
         menu_box={x=bx,y=by,w=mw,h=mh}
         rect(bx-1,by-1,mw+2,mh+2,17,'FFFFFF',218);rect(bx,by,mw,mh,16,'29272A',8)
-        text(bx+18,by+23,menu=='speed' and '播放速度' or '音轨与字幕',11,120)
+        local labels={speed='播放速度',audio='音轨语言',subtitles='字幕',context='影片选项'}
+        text(bx+18,by+23,labels[menu] or '',11,120)
         for index=first,last do
             local row=rows[index];local ry=by+40+(index-first)*34
             if row.heading then text(bx+18,ry+16,row.label,10,150)
-            else button('row-'..index,bx+8,ry,mw-16,32,row.click);text(bx+18,ry+16,row.label,12,15,4,false,mw-55);if row.selected then text(bx+mw-24,ry+16,'✓',15,0,5) end end
+            else if row.selected then rect(bx+8,ry,mw-16,32,8,'FFFFFF',239) end;button('row-'..index,bx+8,ry,mw-16,32,row.click);text(bx+18,ry+16,row.label,12,15,4,false,mw-55);if row.selected then text(bx+mw-24,ry+16,'✓',15,0,5) end end
         end
         if #rows>limit then
             local py=by+mh-35
@@ -197,6 +266,9 @@ mp.add_forced_key_binding('MOUSE_MOVE','luma-move',function()
     if drag and pressed then slider(pressed) end
 end)
 mp.add_forced_key_binding('MOUSE_LEAVE','luma-leave',function()mx,my=-1,-1 end)
+mp.add_forced_key_binding('MBTN_RIGHT','luma-context',function()
+    local mouse=prop('mouse-pos',{});context_at={x=(mouse.x or 0)/scale,y=(mouse.y or 0)/scale};page=0;menu=menu=='context' and nil or 'context';activity();render()
+end)
 mp.add_key_binding('SPACE','luma-pause',function()mp.commandv('cycle','pause');activity()end)
 mp.add_key_binding('LEFT','luma-back',function()mp.commandv('seek',-10,'relative+exact');activity()end,{repeatable=true})
 mp.add_key_binding('RIGHT','luma-forward',function()mp.commandv('seek',10,'relative+exact');activity()end,{repeatable=true})

@@ -6,6 +6,7 @@ function subscribe(channel, callback) {
 }
 
 contextBridge.exposeInMainWorld('desktop', {
+  ready: () => ipcRenderer.send('app:ready'),
   loadLibrary: () => ipcRenderer.invoke('library:load'),
   saveLibrary: library => ipcRenderer.invoke('library:save', library),
   loadSettings: () => ipcRenderer.invoke('settings:load'),

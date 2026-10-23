@@ -1,6 +1,6 @@
 {
   "name": "luma-player",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "A cinematic Windows player for your local and NAS library",
   "private": true,
   "type": "module",
@@ -12,7 +12,7 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview --host 0.0.0.0",
     "desktop": "npm run build && electron .",
-    "package:win": "npm run build && electron-builder --win portable --x64",
+    "package:win": "npm run build && electron-builder --win nsis zip --x64",
     "test": "node --test tests/*.test.cjs",
     "test:browser": "node scripts/smoke-browser.mjs",
     "test:desktop": "npm run build && node scripts/smoke-native.mjs"
@@ -53,9 +53,19 @@
       "package.json"
     ],
     "win": {
-      "target": "portable",
+      "target": ["nsis", "zip"],
       "signExecutable": false,
       "icon": "public/luma.ico"
+    },
+    "artifactName": "Luma-${version}-Windows-${arch}.${ext}",
+    "nsis": {
+      "artifactName": "Luma-Windows-x64.exe",
+      "oneClick": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Luma",
+      "deleteAppDataOnUninstall": false
     },
     "asar": true,
     "npmRebuild": false,

@@ -15,6 +15,10 @@ protocol.registerSchemesAsPrivileged([{ scheme: 'luma-media', privileges: { stan
 let window;
 let service;
 let database;
+let closing=false;
+let backgroundTimer;
+let backgroundStarted=false;
+let backgroundWork=Promise.resolve();
 const player=new MpvPlayer();
 const networkFetch=(url,options)=>net.fetch(String(url),options);
 let settings = {};
@@ -50,6 +54,16 @@ function currentMedia(id) {
   return media;
 }
 function wireIpc() {
+  ipcMain.on('app:ready',event=>{
+    if(event.sender!==window?.webContents || backgroundStarted || closing)return;
+    backgroundStarted=true;
+    // Keep directory enumeration, NAS polling, probing and scraping off the first-frame path.
+    backgroundTimer=setTimeout(()=>{
+      backgroundWork=service.syncWatchers().catch(error=>console.error('Folder watching could not start:',error.message)).then(()=>{
+        if(!closing)service.enqueue((service.library?.media||[]).filter(m=>m.path && !m.missing && (!m.technical || (settings.autoScrape && settings.tmdbToken && ((!m.metadataOrigin && !m.tmdbId && m.metadataStatus!=='review') || (m.tmdbId && !m.certificationCheckedAt))))));
+      });
+    },1000);
+  });
   ipcMain.handle('library:load',()=>service.library);
   ipcMain.handle('library:save',(_,next)=>{
     if(!next || !Array.isArray(next.media) || !Array.isArray(next.sources))throw new Error('影音库格式无效。');
@@ -154,7 +168,7 @@ else {
     database=openLibraryDatabase(app.getPath('userData'));
     service=new LibraryService({database,directory:app.getPath('userData'),getSettings:()=>settings,notify,authorize:media=>{allowedFiles.clear();authorizeMedia(media);},fetcher:networkFetch});
     authorizeMedia(service.library?.media);
-    await service.init();
+    await service.init({watchFolders:false});
     let lastProgress=0;
     player.on('state',state=>notify('player:changed',state));
     player.on('progress',state=>{
@@ -166,12 +180,11 @@ else {
     protocol.handle('luma-media', serveLocalMedia);
     wireIpc();
     await createWindow();
-    service.enqueue((service.library?.media||[]).filter(m=>m.path && !m.missing && (!m.technical || (settings.autoScrape && settings.tmdbToken && ((!m.metadataOrigin && !m.tmdbId && m.metadataStatus!=='review') || (m.tmdbId && !m.certificationCheckedAt))))));
   }).catch(error => { dialog.showErrorBox('Luma 无法启动', error.message); app.quit(); });
-  let closing=false;
   app.on('before-quit',event=>{
     if(closing)return;event.preventDefault();closing=true;
-    Promise.all([player.stop(),service?.close()]).finally(()=>{database?.close();app.quit();});
+    clearTimeout(backgroundTimer);
+    Promise.all([player.stop(),backgroundWork.then(()=>service?.close())]).finally(()=>{database?.close();app.quit();});
   });
   app.on('window-all-closed', () => app.quit());
 }

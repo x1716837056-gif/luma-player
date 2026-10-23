@@ -21,6 +21,8 @@ export type Media = {
   episode?: string;
   sourceId: string;
   path?: string;
+  fileSize?: number;
+  modifiedAt?: number;
   videoUrl?: string;
   quality: string;
   favorite?: boolean;
@@ -56,6 +58,7 @@ declare global {
   interface Window {
     __LUMA_ASSETS?: Record<string, string>;
     desktop?: {
+      ready(): void;
       loadLibrary(): Promise<Library | null>;
       saveLibrary(library: Library): Promise<void>;
       loadSettings(): Promise<Partial<Settings>>;

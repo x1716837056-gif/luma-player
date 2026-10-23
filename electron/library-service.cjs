@@ -8,10 +8,10 @@ class LibraryService {
     this.library=database.load();this.watchers=new Map();this.debounce=new Map();this.scans=new Map();
     this.jobs=new Set();this.stats={running:false,completed:0,matched:0,review:0,failed:0,total:0,queued:0};this.controller=new AbortController();
   }
-  async init() {
+  async init({watchFolders=true}={}) {
     const {default:PQueue}=await import('p-queue');this.queue=new PQueue({concurrency:2});
     this.tmdbQueue=new PQueue({concurrency:1,intervalCap:3,interval:1000});
-    await this.syncWatchers();
+    if(watchFolders)await this.syncWatchers();
   }
   publish() { this.authorize(this.library?.media);this.notify('library:changed',this.library); }
   save() { this.db.save(this.library);this.publish(); }

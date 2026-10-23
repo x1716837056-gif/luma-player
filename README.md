@@ -2,13 +2,19 @@
 
 按照 Infuse Mac 的视觉方向制作：深色侧栏、暖金色选中态、宽幅影片背景、圆角海报墙、半透明弹窗和简洁播放控件。面向本地硬盘与 NAS 共享文件夹。
 
-这是 **0.1.1 功能增强版**。界面使用 React / TypeScript / CSS，Windows 外壳使用 Electron。代码没有使用 Infuse 的源码、图标或品牌素材。
+这是 **0.1.2 启动优化版**。界面使用 React / TypeScript / CSS，Windows 外壳使用 Electron。代码没有使用 Infuse 的源码、图标或品牌素材。
 
 ## 直接使用 Windows 版本
 
-[下载 Windows x64 免安装 EXE](https://github.com/x1716837056-gif/luma-player/releases/latest/download/Luma-Windows-x64.exe) · [版本与更新说明](https://github.com/x1716837056-gif/luma-player/releases/latest)
+[下载 Windows x64 安装程序](https://github.com/x1716837056-gif/luma-player/releases/latest/download/Luma-Windows-x64.exe) · [版本与 ZIP 下载](https://github.com/x1716837056-gif/luma-player/releases/latest)
 
-在 Windows 10 / 11 x64 上运行 `Luma-Integrated.exe`。这是免安装预览版。
+Windows 10 / 11 x64：首次运行 `Luma-Windows-x64.exe` 完成安装，以后从桌面或开始菜单的 **Luma** 快捷方式启动。安装程序只需运行一次；反复打开安装程序会重复安装。0.1.2 不再使用每次启动都解压全部运行库的便携 EXE，应用显示后才启动目录监听与后台整理。
+
+不想安装时，在版本页面下载 `Luma-0.1.2-Windows-x64.zip`，**完整解压一次**，然后双击解压文件夹里的 `Luma.exe`。请保留其余文件，不要从压缩包预览中直接运行。
+
+音轨语言与字幕使用独立菜单；在海报、列表或播放画面上右键，可查看影片简介和片源信息。片源信息分别展示视频参数、音轨语言、字幕、文件大小与位置。
+
+以显示已加载的影音库为启动计时终点，目标约 3 秒。首次安装 / 解压不计入日常启动；其他电脑的硬盘、杀毒扫描和配置会影响实际时间，未承诺所有设备都在 3 秒内启动。
 
 首次启动展示明确标注的示例影音库。点击「添加影片」选择自己的文件夹后，会自动替换示例。也可以到「设置 → 影音库与刮削」清空示例库。
 
@@ -16,7 +22,7 @@
 
 「电影」页提供影片类型、建议观看年龄、上映年份组合分类。类型参考 Netflix 的类别浏览：动作与冒险、科幻与奇幻、悬疑与惊悚、喜剧、剧情、爱情、犯罪、恐怖、动画、儿童与家庭、纪录片、战争、历史、音乐与歌舞及西部；年龄分组为全年龄、7+、10+、13+、16+、18+和未分级。年份支持近 5 年、具体年份和年代。年龄按 TMDB / NFO 地区分级归组，缺少可靠分级时保留未分级；已有 TMDB 影片可单独补全分级，不覆盖手动资料、收藏或进度。
 
-本机已恢复开发环境时，可以双击源码目录里的 `Start-Luma.cmd`。本机打包的免安装程序位于 `release-final/Luma 0.1.1.exe`。
+本机已恢复开发环境时，可以双击源码目录里的 `Start-Luma.cmd`。打包后安装程序位于 `release/Luma-Windows-x64.exe`，ZIP 版位于 `release/Luma-0.1.2-Windows-x64.zip`。
 
 设置中填写 TMDB API Key 或读取令牌后，可自动匹配导入的影片，或点击底部「自动匹配未整理影片」。仅唯一且片名、年份足够匹配的候选会自动应用；不明确的结果留待手动确认。NFO 和手动修正的资料不会被自动刮削覆盖。后台任务支持并发限制、请求节流、瞬时错误重试和取消；海报缓存在本机。
 
@@ -60,7 +66,7 @@ npm run dev
 # 构建并运行桌面版
 npm run desktop
 
-# 生成 Windows x64 免安装程序
+# 生成 Windows x64 安装程序与解压一次的 ZIP
 npm run package:win
 
 # 扫描器、NFO、Range 与元数据测试
@@ -79,6 +85,7 @@ npm run test:desktop
 
 ```sh
 node scripts/smoke-mpv-ui.mjs
+node scripts/benchmark-startup.mjs "release/win-unpacked/Luma.exe"
 node scripts/test-real-library.cjs "Z:\\a测试"
 node scripts/test-real-library.cjs "Z:\\测试\\4K-HDR 演示片" "01_"
 ```
