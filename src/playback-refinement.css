@@ -1,5 +1,7 @@
 /* A lightweight cinema overlay: the picture remains visible between controls. */
 html:has(.cinema-player){overflow:hidden}
+.playback-color-settings{margin-top:24px;padding-top:22px;border-top:1px solid var(--border)}.settings-content .playback-color-settings h2{display:flex;align-items:center;gap:8px;font-size:15px;font-weight:550;margin:0 0 8px}.settings-content .playback-color-settings>.field-help{margin:8px 0 14px;line-height:1.8}.playback-color-settings .settings-check{margin-top:18px}
+.playback-color-settings>select{width:100%;height:37px;border:1px solid #ffffff13;border-radius:6px;background:#18191d;color:#bcbcc5;padding:0 10px;font-size:11px;outline-offset:2px}html[data-theme=light] .playback-color-settings>select{background:#fff;border-color:#25252d19;color:#565660}
 .cinema-shade{background:linear-gradient(0deg,#000b 0,#0006 100px,transparent min(200px,60vh)),linear-gradient(180deg,#0007,transparent 100px);transition:opacity .3s}
 .cinema-heading{inset:24px 32px auto;gap:12px}.cinema-title{gap:2px;max-width:calc(100% - 190px)}
 .cinema-title>span{display:none}.cinema-title>strong{font-size:18px;font-weight:550;line-height:25px;letter-spacing:-.2px}.cinema-title>small{font-size:11px;line-height:16px;color:#ffffff8c}

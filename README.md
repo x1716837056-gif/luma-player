@@ -4,6 +4,8 @@
 
 当前源码为 **0.1.3 开发更新（尚未发布）**。界面使用 React / TypeScript / CSS，Windows 外壳使用 Electron。代码没有使用 Infuse 的源码、图标或品牌素材。
 
+开发版新增「设置 → 播放设置 → 画面与 HDR」，以及原生播放窗口右键的即时调整：基于现有 mpv / libplacebo 进行杜比视界色彩重建、HDR 转 SDR、屏幕亮度与色域映射。默认为自动适配屏幕；[项目选择、使用方法与验证范围](HDR-MAPPING.md)说明了物理 HDR 输出的验证边界。此功能尚未进入下载页的已发布安装包。
+
 ## 直接使用 Windows 版本
 
 [下载最近发布的 Windows x64 安装程序](https://github.com/x1716837056-gif/luma-player/releases/latest/download/Luma-Windows-x64.exe) · [版本与 ZIP 下载](https://github.com/x1716837056-gif/luma-player/releases/latest)

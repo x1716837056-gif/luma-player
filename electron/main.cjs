@@ -10,6 +10,7 @@ const { openLibraryDatabase } = require('./database.cjs');
 const { LibraryService } = require('./library-service.cjs');
 const { MpvPlayer } = require('./mpv.cjs');
 const { probeMedia,toolPath } = require('./probe.cjs');
+const { normalizeColorMapping } = require('./color-mapping.cjs');
 
 protocol.registerSchemesAsPrivileged([{ scheme: 'luma-media', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true } }]);
 let window;
@@ -81,6 +82,7 @@ function wireIpc() {
   ipcMain.handle('settings:load',()=>settings);
   ipcMain.handle('settings:save',async (_,next)=>{
     if(!next || typeof next.tmdbToken!=='string' || typeof next.mpvPath!=='string' || !['auto','native','mpv'].includes(next.defaultPlayer))throw new Error('设置格式无效。');
+    next={...next,colorMapping:normalizeColorMapping(next.colorMapping)};
     const previous=settings;
     const persisted={...next,theme:next.theme==='light'?'light':'dark'};
     if(next.tmdbToken && safeStorage.isEncryptionAvailable()){persisted.encryptedToken=safeStorage.encryptString(next.tmdbToken).toString('base64');delete persisted.tmdbToken;}
@@ -114,7 +116,7 @@ function wireIpc() {
     try { await fsp.access(actual.path,fs.constants.R_OK); } catch { throw new Error('影片文件暂时无法读取，请检查硬盘或 NAS 连接。'); }
     const executable=toolPath('mpv',settings.mpvPath);
     if(!executable)throw new Error('未找到 mpv，请在播放设置中指定 mpv.exe。');
-    return player.start(executable,actual,{audioOutput:process.env.LUMA_TEST_AUDIO_OUTPUT==='null'?'null':undefined});
+    return player.start(executable,actual,{colorMapping:settings.colorMapping,audioOutput:process.env.LUMA_TEST_AUDIO_OUTPUT==='null'?'null':undefined});
   });
   ipcMain.on('window:action',(_,action)=>{
     if(action==='minimize')window.minimize();

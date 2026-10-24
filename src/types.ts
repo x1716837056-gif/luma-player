@@ -49,7 +49,8 @@ export type Source = {
 };
 
 export type Library = { media: Media[]; sources: Source[]; demo: boolean };
-export type Settings = { theme: 'dark' | 'light'; tmdbToken: string; metadataLanguage: string; autoplay: boolean; defaultPlayer: 'auto' | 'native' | 'mpv'; mpvPath: string; autoScrape: boolean; watchFolders: boolean; };
+export type ColorMapping = {output:'auto'|'sdr'|'hdr';curve:'auto'|'spline'|'bt.2390'|'bt.2446a'|'st2094-40'|'st2094-10';peakNits:number;dynamicPeak:boolean};
+export type Settings = { theme: 'dark' | 'light'; tmdbToken: string; metadataLanguage: string; autoplay: boolean; defaultPlayer: 'auto' | 'native' | 'mpv'; mpvPath: string; autoScrape: boolean; watchFolders: boolean; colorMapping?:ColorMapping; };
 export type ScanResult = { media: Media[]; source: Source; warnings: string[] };
 export type TaskStatus = { running: boolean; completed: number; total: number; matched: number; review: number; failed: number; queued: number; active?: number };
 export type PlayerState = { active: boolean; error?: string; mediaId?: string; title?: string; position?: number; duration?: number; paused?: boolean; tracks?: {id: number; type: string; title?: string; lang?: string; selected?: boolean}[] };

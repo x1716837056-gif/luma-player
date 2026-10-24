@@ -4,6 +4,7 @@ const crypto = require('node:crypto');
 const { EventEmitter } = require('node:events');
 const fs = require('node:fs');
 const path = require('node:path');
+const {colorArguments}=require('./color-mapping.cjs');
 
 class MpvPlayer extends EventEmitter {
   constructor() { super(); this.state={active:false}; this.pending=new Map(); this.sequence=0; }
@@ -24,6 +25,7 @@ class MpvPlayer extends EventEmitter {
     this.state={active:true,mediaId:media.id,title:media.title,position:0,duration:seconds,paused:false,tracks:[]};
     const args=['--no-config','--no-terminal','--force-window=yes','--keep-open=no','--hwdec=auto-copy','--osc=no','--osd-bar=no',`--script=${script}`,'--autofit=85%x85%',`--input-ipc-server=${pipe}`,`--title=Luma · ${media.title}`,`--force-media-title=${media.title}`];
     if(process.platform==='win32')args.push('--vo=gpu-next','--gpu-api=d3d11','--title-bar=no','--window-corners=round');
+    args.push(...colorArguments(options.colorMapping));
     if(options.mute)args.push('--mute=yes');
     // Allows control tests to run on machines without an audio endpoint.
     if(options.audioOutput==='null')args.push('--ao=null');

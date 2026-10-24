@@ -95,7 +95,7 @@ local function icon(name, x, y, s, a)
 end
 local function activity() last_activity = mp.get_time() end
 local function toggle_menu(kind) menu = menu == kind and nil or kind; page = 0; menu_leave_at=nil; activity() end
-local function back() if menu then menu=nil elseif prop('fullscreen') then mp.set_property_native('fullscreen',false) else mp.commandv('quit') end;activity() end
+local function back() if menu=='color-curve' or menu=='color-peak' then menu='color';page=0 elseif menu then menu=nil elseif prop('fullscreen') then mp.set_property_native('fullscreen',false) else mp.commandv('quit') end;activity() end
 local function seek(n) mp.commandv('seek', clamp(n,0,prop('duration',0)), 'absolute+exact'); activity() end
 local languages={eng='英语',en='英语',chi='中文',zho='中文',zh='中文',cmn='普通话',yue='粤语',jpn='日语',ja='日语',kor='韩语',ko='韩语',fra='法语',fre='法语',fr='法语',deu='德语',ger='德语',de='德语',spa='西班牙语',es='西班牙语',rus='俄语',ru='俄语'}
 local function track_label(t)
@@ -111,6 +111,10 @@ local function info_lines()
     end
     local tech=media.technical or {}
     local rows={'分辨率  '..(tech.width and (tech.width..' × '..(tech.height or '')) or '尚未探测'), '视频编码  '..string.upper(tech.videoCodec or '未知'), '封装格式  '..(tech.container or '未知'), '动态范围  '..(tech.hdr and 'HDR 片源' or 'SDR / 未标注 HDR'),'', '音轨语言'}
+    local input,target=prop('video-params',{}),prop('video-target-params',{})
+    table.insert(rows,5,'输入色彩  '..(input.colormatrix=='dolbyvision' and '杜比视界 · 色彩重建' or tostring(input.primaries or '未知'))..' / '..tostring(input.gamma or '未知'))
+    table.insert(rows,6,'映射输出  '..tostring(target.primaries or '未知')..' / '..tostring(target.gamma or '未知')..(target['max-luma'] and string.format(' · %.0f 尼特',target['max-luma']) or ''))
+    table.insert(rows,7,'亮度曲线  '..tostring(prop('tone-mapping','auto'))..' · 屏幕实际模式由系统决定')
     local audio,subs={},{}
     for _,t in ipairs(prop('track-list',{})) do
         if t.type=='audio' then audio[#audio+1]=track_label(t)..'  '..string.upper(t.codec or '')
@@ -135,6 +139,15 @@ local function wrap_lines(rows,width)
     end
     return result
 end
+local color_peak=tonumber(prop('target-peak')) or 0
+local function set_output(output)
+    mp.set_property('target-colorspace-hint','auto')
+    mp.set_property('target-colorspace-hint-mode','target')
+    mp.set_property('target-trc',output=='sdr' and 'srgb' or output=='hdr' and 'pq' or 'auto')
+    mp.set_property('target-prim',output=='sdr' and 'bt.709' or output=='hdr' and 'bt.2020' or 'auto')
+    mp.set_property('target-peak',output=='hdr' and color_peak>0 and tostring(color_peak) or 'auto')
+    menu=nil;activity();mp.osd_message('已更新本次播放的色彩映射',2)
+end
 local function menu_rows()
     local rows = {}
     if menu == 'speed' then
@@ -156,6 +169,24 @@ local function menu_rows()
         rows[#rows+1]={label='影片简介',click=function()menu='overview';page=0 end}
         rows[#rows+1]={label='片源信息',click=function()menu='source';page=0 end}
         rows[#rows+1]={label='画面异常？使用兼容解码',click=function() mp.set_property('hwdec','no');menu=nil;mp.osd_message('已切换兼容解码',2) end}
+        rows[#rows+1]={label='画面与 HDR',click=function()menu='color';page=0 end}
+    elseif menu=='color' then
+        local trc=prop('target-trc','auto')
+        rows[#rows+1]={label='自动适配屏幕',selected=trc=='auto',click=function()set_output('auto')end}
+        rows[#rows+1]={label='HDR 转 SDR · 普通屏幕',selected=trc=='srgb',click=function()set_output('sdr')end}
+        rows[#rows+1]={label='HDR 屏幕 · PQ 输出',selected=trc=='pq',click=function()set_output('hdr')end}
+        rows[#rows+1]={label='亮度映射曲线  ›',click=function()menu='color-curve';page=0 end}
+        rows[#rows+1]={label='HDR 屏幕峰值亮度  ›',click=function()menu='color-peak';page=0 end}
+        rows[#rows+1]={label='按场景分析亮度',selected=prop('hdr-compute-peak','auto')~='no',click=function()mp.set_property('hdr-compute-peak',prop('hdr-compute-peak','auto')=='no' and 'auto' or 'no');menu=nil end}
+    elseif menu=='color-curve' then
+        for _,curve in ipairs({{'auto','自动 · 均衡'},{'spline','Spline · 平滑过渡'},{'bt.2390','BT.2390 · 柔和高光'},{'bt.2446a','BT.2446A · HDR / SDR'},{'st2094-40','ST2094-40 · 动态曲线'},{'st2094-10','ST2094-10 · 动态曲线'}}) do
+            local value=curve[1];rows[#rows+1]={label=curve[2],selected=prop('tone-mapping')==value,click=function()mp.set_property('tone-mapping',value);menu=nil end}
+        end
+    elseif menu=='color-peak' then
+        if prop('target-trc')~='pq' then rows[#rows+1]={label='先选择 HDR 屏幕输出',heading=true}
+        else for _,nits in ipairs({0,400,600,1000,1500,2000,4000}) do
+            local value=nits;rows[#rows+1]={label=value==0 and '自动读取屏幕' or (value..' 尼特'),selected=color_peak==value,click=function()color_peak=value;mp.set_property('target-peak',value==0 and 'auto' or tostring(value));menu=nil end}
+        end end
     end
     return rows
 end
@@ -262,10 +293,10 @@ local function render()
         for _,item in ipairs(elements) do if item.id==menu then trigger=item;break end end
         local bx=clamp((trigger and trigger.x+trigger.w/2 or x+w-80)-mw/2,12,W-mw-12)
         local by=(trigger and trigger.y or y)-mh-10
-        if menu=='context' then bx=clamp(context_at.x,12,W-mw-12);by=clamp(context_at.y,12,H-mh-12) end
+        if menu=='context' or menu=='color' or menu=='color-curve' or menu=='color-peak' then bx=clamp(context_at.x,12,W-mw-12);by=clamp(context_at.y,12,H-mh-12) end
         menu_box={x=bx,y=by,w=mw,h=mh}
         rect(bx-1,by-1,mw+2,mh+2,17,'FFFFFF',218);rect(bx,by,mw,mh,16,'29272A',8)
-        local labels={speed='播放速度',audio='音轨语言',subtitles='字幕',context='影片选项'}
+        local labels={speed='播放速度',audio='音轨语言',subtitles='字幕',context='影片选项',color='画面与 HDR · 本次播放',['color-curve']='亮度映射曲线',['color-peak']='HDR 屏幕峰值亮度'}
         text(bx+18,by+23,labels[menu] or '',11,120)
         for index=first,last do
             local row=rows[index];local ry=by+40+(index-first)*34
