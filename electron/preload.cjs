@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld('desktop', {
   playMpv: (media,restart=false) => ipcRenderer.invoke('player:mpv', media,restart===true),
   updateMedia: (id, patch) => ipcRenderer.invoke('library:patch', id, patch),
   updatePersonal: (id,patch)=>ipcRenderer.invoke('library:personal',id,patch),
+  loadBrowseArtwork: force=>ipcRenderer.invoke('library:browse-artwork',force===true),
   preferVersion: id=>ipcRenderer.invoke('library:preferred',id),
   markWatched: (id,watched,scope='item')=>ipcRenderer.invoke('library:watched',id,watched,scope),
   duplicateStatus: ()=>ipcRenderer.invoke('duplicates:status'),

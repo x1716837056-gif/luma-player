@@ -49,6 +49,17 @@ function confidence(media,candidate) {
   const yearOk=!media.year || Math.abs(media.year-candidate.year)<=1;
   return exact && yearOk ? 1 : bilingual && yearOk ? .95 : 0;
 }
+const imageUrl=(value,size)=>typeof value==='string'&&value.startsWith('/')?`https://image.tmdb.org/t/p/${size}${value}`:undefined;
+function browseArtwork(result){
+  const people=[...(result.credits?.crew||[]).filter(p=>p.job==='Director').map(p=>({...p,role:'director'})),...(result.credits?.cast||[]).slice(0,12).map(p=>({...p,role:'actor'}))];
+  return {people:people.filter(p=>typeof p.name==='string').map(p=>({id:p.id,name:p.name,role:p.role,photo:imageUrl(p.profile_path,'w500')})),
+    collection:result.belongs_to_collection?{id:result.belongs_to_collection.id,name:result.belongs_to_collection.name,poster:imageUrl(result.belongs_to_collection.poster_path,'w500'),backdrop:imageUrl(result.belongs_to_collection.backdrop_path,'w780')}:undefined,
+    browseArtworkCheckedAt:Date.now(),browseArtworkError:''};
+}
+async function resolveBrowseArtwork(media,token,language='zh-CN',fetcher=fetch,signal){
+  const api=client(token,fetcher,signal),data=await(media.kind==='tv'?api.tvShows.details(media.tmdbId,['credits'],language):api.movies.details(media.tmdbId,['credits'],language));
+  return browseArtwork(data);
+}
 async function resolveMetadata(media,candidate,token,language='zh-CN',fetcher=fetch,signal) {
   const api=client(token,fetcher,signal);
   const r=await (candidate.kind==='tv'?api.tvShows.details(candidate.tmdbId,['credits','content_ratings'],language):api.movies.details(candidate.tmdbId,['credits','release_dates'],language));
@@ -58,34 +69,40 @@ async function resolveMetadata(media,candidate,token,language='zh-CN',fetcher=fe
   next.cast=(r.credits?.cast||[]).slice(0,12).map(p=>p.name);
   next.director=(r.credits?.crew||[]).find(p=>p.job==='Director')?.name;
   next.directors=[...new Set((r.credits?.crew||[]).filter(p=>p.job==='Director').map(p=>p.name))];
-  if(candidate.kind==='movie')next.collection=r.belongs_to_collection?{id:r.belongs_to_collection.id,name:r.belongs_to_collection.name}:undefined;
+  Object.assign(next,browseArtwork(r));
   if (candidate.kind==='movie' && r.runtime && !media.technical?.durationSeconds) next.duration=r.runtime;
   next.metadataStatus='matched'; next.metadataOrigin='tmdb'; next.metadataError='';
   return next;
 }
 async function cacheArtwork(media,directory,fetcher=fetch,signal) {
-  const patch={};
+  const next={...media,people:media.people?.map(p=>({...p})),collection:media.collection?{...media.collection}:undefined};
   await fs.mkdir(directory,{recursive:true});
-  for (const key of ['poster','backdrop']) {
-    const url=media[key];
-    if (!url?.startsWith('https://image.tmdb.org/t/p/')) continue;
+  const assets=[[next,'poster'],[next,'backdrop'],...(next.people||[]).map(p=>[p,'photo']),...(next.collection?[[next.collection,'poster'],[next.collection,'backdrop']]:[])],pending=new Map();
+  async function cache(url){
+    if(typeof url!=='string'||!url.startsWith('https://image.tmdb.org/t/p/'))return url;
+    if(pending.has(url))return pending.get(url);
+    const work=(async()=>{
+    let temporary;
     try {
       const filename=path.join(directory,crypto.createHash('sha256').update(url).digest('hex')+'.jpg');
       try { await fs.access(filename); } catch {
         const response=await fetcher(url,{signal:signal?AbortSignal.any([signal,AbortSignal.timeout(20000)]):AbortSignal.timeout(20000)});
-        if (!response.ok) continue;
+        if (!response.ok) return url;
         const data=Buffer.from(await response.arrayBuffer());
-        if (data.length>15*1024*1024) continue;
-        await fs.writeFile(filename+'.tmp',data); await fs.rename(filename+'.tmp',filename);
+        if (!data.length||data.length>15*1024*1024) return url;
+        temporary=filename+'.'+crypto.randomUUID()+'.tmp';await fs.writeFile(temporary,data);await fs.rename(temporary,filename);temporary=undefined;
       }
-      patch[key]=`luma-media://local/${encodeURIComponent(filename)}`;
-    } catch { /* Online metadata remains usable if artwork caching fails. */ }
+      return `luma-media://local/${encodeURIComponent(filename)}`;
+    } catch { return url; /* Online metadata remains usable if artwork caching fails. */ }
+    finally{if(temporary)await fs.unlink(temporary).catch(()=>{});}
+    })();pending.set(url,work);return work;
   }
-  return {...media,...patch};
+  let index=0;await Promise.all(Array.from({length:Math.min(4,assets.length)},async()=>{while(index<assets.length){const [target,key]=assets[index++];if(target[key])target[key]=await cache(target[key]);}}));
+  return next;
 }
 async function refreshCertification(media,token,language='zh-CN',fetcher=fetch,signal) {
   const api=client(token,fetcher,signal);
   const data=media.kind==='tv'?await api.tvShows.contentRatings(media.tmdbId):await api.movies.releaseDates(media.tmdbId);
   return {...extractCertification(media.kind==='tv'?{content_ratings:data}:{release_dates:data},media.kind,language),certificationCheckedAt:Date.now(),certificationError:''};
 }
-module.exports={searchMetadata,resolveMetadata,cacheArtwork,confidence,refreshCertification};
+module.exports={searchMetadata,resolveMetadata,resolveBrowseArtwork,cacheArtwork,confidence,refreshCertification};

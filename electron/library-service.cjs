@@ -1,7 +1,7 @@
 const path=require('node:path');
 const { scanFolder }=require('./library.cjs');
 const { probeMedia }=require('./probe.cjs');
-const { searchMetadata, resolveMetadata, cacheArtwork, confidence, refreshCertification }=require('./metadata.cjs');
+const { searchMetadata, resolveMetadata, resolveBrowseArtwork, cacheArtwork, confidence, refreshCertification }=require('./metadata.cjs');
 const {seriesFor,episodeIdentity}=require('../shared/series.mjs');
 const {movieFor,groupMovies}=require('../shared/movies.mjs');
 const {applyPersonal,itemVersions,personalFields,metadataOnly}=require('../shared/user-library.mjs');
@@ -12,7 +12,7 @@ class LibraryService {
     let hydrated=false;
     for(const media of this.library?.media||[]){const identity=episodeIdentity(media);if(!identity||media.seriesTitle)continue;Object.assign(media,{kind:'tv',seriesTitle:identity.title,seriesOriginalTitle:identity.originalTitle,seriesYear:identity.year,season:media.season??identity.season??undefined,episodeNumber:media.episodeNumber??identity.number??undefined,episode:media.episode||(identity.number!==null?`第 ${identity.season??1} 季 · 第 ${identity.number} 集`:undefined)});if(!media.metadataOrigin&&!media.tmdbId){media.title=identity.title;media.originalTitle=identity.originalTitle;}hydrated=true;}
     if(hydrated)database.save(this.library);
-    this.jobs=new Set();this.stats={running:false,completed:0,matched:0,review:0,failed:0,total:0,queued:0};this.controller=new AbortController();
+    this.jobs=new Set();this.artworkJobs=new Map();this.stats={running:false,completed:0,matched:0,review:0,failed:0,total:0,queued:0};this.controller=new AbortController();
   }
   async init({watchFolders=true}={}) {
     const {default:PQueue}=await import('p-queue');this.queue=new PQueue({concurrency:2});
@@ -116,6 +116,28 @@ class LibraryService {
     this.stats.running=this.jobs.size>0;this.emitStatus();return this.status();
   }
   cancel() { this.controller.abort();this.stats.running=false;this.emitStatus(); }
+  async loadBrowseArtwork(force=false){
+    const prefs=this.getSettings();if(!prefs.tmdbToken)return {completed:0,failed:0,needsToken:true};
+    if(!force&&prefs.autoScrape===false)return {completed:0,failed:0,disabled:true};
+    if(this.controller.signal.aborted)this.controller=new AbortController();const signal=this.controller.signal,works=new Map();
+    for(const m of this.library?.media||[])if(Number.isInteger(m.tmdbId)&&(!m.browseArtworkCheckedAt||force))works.set(`${m.kind}:${m.tmdbId}`,m);
+    const jobs=[...works].map(([key,media])=>{
+      if(this.artworkJobs.has(key))return this.artworkJobs.get(key);
+      const work=this.queue.add(async()=>{
+        const art=await this.tmdbQueue.add(()=>resolveBrowseArtwork(media,prefs.tmdbToken,prefs.metadataLanguage,this.fetcher,signal),{signal});
+        const cached=await cacheArtwork(art,path.join(this.directory,'artwork'),this.fetcher,signal);if(signal.aborted)return false;
+        for(const current of this.library?.media||[])if(`${current.kind}:${current.tmdbId}`===key){
+          current.people=cached.people.map(person=>{const old=current.people?.find(p=>p.role===person.role&&(p.id&&p.id===person.id||p.name===person.name));return {...person,photo:person.photo||old?.photo};});
+          const collection=cached.collection;
+          if(collection&&(!current.collection||current.collection.id===collection.id||current.collection.name===collection.name))current.collection={...collection,...current.collection,poster:collection.poster||current.collection?.poster,backdrop:collection.backdrop||current.collection?.backdrop};
+          current.browseArtworkCheckedAt=cached.browseArtworkCheckedAt;current.browseArtworkError='';
+        }
+        this.save();return true;
+      },{signal}).catch(()=>{if(!signal.aborted){for(const m of this.library?.media||[])if(`${m.kind}:${m.tmdbId}`===key)m.browseArtworkError='图片补全失败，可稍后重试。';this.save();}return false;}).finally(()=>this.artworkJobs.delete(key));
+      this.artworkJobs.set(key,work);return work;
+    });
+    const results=await Promise.all(jobs);return {completed:results.filter(Boolean).length,failed:results.filter(r=>!r).length};
+  }
   async match(id,candidate) {
     const media=this.library?.media.find(m=>m.id===id);
     if(!media || !Number.isInteger(candidate.tmdbId)||!['movie','tv'].includes(candidate.kind))throw new Error('请选择有效的影片。');
@@ -126,14 +148,15 @@ class LibraryService {
     const cached=await cacheArtwork(details,path.join(this.directory,'artwork'),this.fetcher);
     const patch=metadataOnly(cached);
     if(series&&candidate.kind==='tv'){
-      const fields=['title','originalTitle','seriesTitle','seriesOriginalTitle','seriesYear','seriesDescription','tmdbId','year','description','poster','backdrop','genre','rating','certification','certificationRegion','minimumAge','certificationCheckedAt','cast','director','directors','metadataStatus','metadataError'];
+      const fields=['title','originalTitle','seriesTitle','seriesOriginalTitle','seriesYear','seriesDescription','tmdbId','year','description','poster','backdrop','genre','rating','certification','certificationRegion','minimumAge','certificationCheckedAt','cast','director','directors','people','browseArtworkCheckedAt','browseArtworkError','metadataStatus','metadataError'];
       const seriesPatch=Object.fromEntries(fields.filter(key=>patch[key]!==undefined).map(key=>[key,patch[key]]));
       for(const episode of series.media)Object.assign(episode,seriesPatch,{metadataOrigin:'manual'});
       this.save();return this.library.media.find(m=>m.id===id);
     }
     if(movie&&candidate.kind==='movie'){
-      const fields=['title','originalTitle','tmdbId','year','description','poster','backdrop','genre','rating','certification','certificationRegion','minimumAge','certificationCheckedAt','cast','director','directors','collection','metadataStatus','metadataError'];
+      const fields=['title','originalTitle','tmdbId','year','description','poster','backdrop','genre','rating','certification','certificationRegion','minimumAge','certificationCheckedAt','cast','director','directors','people','collection','browseArtworkCheckedAt','browseArtworkError','metadataStatus','metadataError'];
       const values=Object.fromEntries(fields.filter(key=>patch[key]!==undefined).map(key=>[key,patch[key]]));
+      values.collection=patch.collection;
       for(const version of movie.media)Object.assign(version,values,{metadataOrigin:'manual'});this.save();return this.library.media.find(m=>m.id===id);
     }
     return this.patch(id,{...patch,metadataOrigin:'manual'});

@@ -36,8 +36,8 @@ const jsonPath = name => path.join(app.getPath('userData'), name);
 function authorizeMedia(media) {
   for (const item of media || []) {
     if (typeof item.path === 'string') allowedFiles.add(normalize(item.path));
-    for (const key of ['poster', 'backdrop']) if (typeof item[key] === 'string' && item[key].startsWith('luma-media://local/')) {
-      try { allowedFiles.add(normalize(decodeURIComponent(new URL(item[key]).pathname.slice(1)))); } catch { /* Invalid URLs are ignored. */ }
+    for (const url of [item.poster,item.backdrop,...(item.people||[]).map(p=>p.photo),item.collection?.poster,item.collection?.backdrop]) if (typeof url === 'string' && url.startsWith('luma-media://local/')) {
+      try { allowedFiles.add(normalize(decodeURIComponent(new URL(url).pathname.slice(1)))); } catch { /* Invalid URLs are ignored. */ }
     }
   }
 }
@@ -86,6 +86,7 @@ function wireIpc() {
   });
   ipcMain.handle('settings:load',()=>settings);
   ipcMain.handle('library:personal',(_,id,patch)=>service.personal(id,patch));
+  ipcMain.handle('library:browse-artwork',(_,force)=>service.loadBrowseArtwork(force===true));
   ipcMain.handle('library:preferred',(_,id)=>service.prefer(id));
   ipcMain.handle('library:watched',(_,id,watched,scope)=>service.markWatched(id,watched,scope==='series'?'series':'item'));
   ipcMain.handle('duplicates:status',()=>duplicates.state);

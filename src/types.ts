@@ -18,7 +18,10 @@ export type Media = {
   director?: string;
   cast?: string[];
   directors?:string[];
-  collection?:{id?:number;name:string};
+  people?:{id?:number;name:string;role:'actor'|'director';photo?:string}[];
+  collection?:{id?:number;name:string;poster?:string;backdrop?:string};
+  browseArtworkCheckedAt?:number;
+  browseArtworkError?:string;
   collectionName?:string;
   watchlist?:boolean;
   personalRating?:number;
@@ -99,6 +102,7 @@ declare global {
       cancelDuplicates():Promise<DuplicateStatus>;
       onDuplicatesChanged(callback:(status:DuplicateStatus)=>void):()=>void;
       applyMetadata(id: string, candidate: Media): Promise<Media>;
+      loadBrowseArtwork(force?:boolean):Promise<{completed:number;failed:number;needsToken?:boolean;disabled?:boolean}>;
       probeMedia(id: string): Promise<Media>;
       startTasks(): Promise<TaskStatus>;
       cancelTasks(): Promise<void>;

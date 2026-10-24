@@ -33,7 +33,7 @@ export function groupMovies(items){
     const preferred=chooseVersion(media),info=[...media].sort((a,b)=>Number(Boolean(b.tmdbId))-Number(Boolean(a.tmdbId))||Number(Boolean(b.poster))-Number(Boolean(a.poster)))[0],identity=identities[movies.indexOf(info)];
     const personal=[...media].sort((a,b)=>(b.personalUpdatedAt||0)-(a.personalUpdatedAt||0))[0];
     const representative={...preferred,title:clean(info.title)||info.title,originalTitle:clean(info.originalTitle)||info.originalTitle,poster:info.poster||preferred.poster,backdrop:info.backdrop||preferred.backdrop,favorite:media.some(m=>m.favorite),watched:media.some(isWatched)};
-    for(const key of ['director','directors','cast','collection'])if(!representative[key]&&info[key])representative[key]=info[key];
+    for(const key of ['director','directors','cast','people','collection'])if(!representative[key]&&info[key])representative[key]=info[key];
     for(const key of ['watchlist','personalRating','notes','collectionName','personalUpdatedAt'])if(personal[key]!==undefined)representative[key]=personal[key];
     return {id:identity.key,title:representative.title,year:info.year,media,representative};
   });
