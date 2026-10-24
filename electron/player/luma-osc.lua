@@ -9,8 +9,24 @@ local page = 0
 local last_visible
 local last_menu, context_at = false, {x=0,y=0}
 local menu_leave_at, layout_signature = nil, ''
+local last_seek_height
+local subtitle_offset, applied_subtitle_offset
 local function clamp(n, a, b) return math.max(a, math.min(b, n)) end
 local function prop(name, fallback) return mp.get_property_native(name, fallback) end
+subtitle_offset=prop('sub-margin-y-offset',0)
+applied_subtitle_offset=subtitle_offset
+local function subtitle_safe_area(shown)
+    local target=subtitle_offset
+    if shown then
+        local reserve=(H-panel.y+24)
+        reserve=prop('sub-scale-with-window',true) and prop('sub-scale-by-window',true) and reserve*720/H or reserve*scale
+        target=math.max(subtitle_offset,math.ceil(reserve)-prop('sub-margin-y',34))
+    end
+    if target~=applied_subtitle_offset then
+        if pcall(mp.set_property_number,'sub-margin-y-offset',target) then applied_subtitle_offset=target end
+    end
+end
+
 local function clock(n)
     n = math.max(0, math.floor(n or 0))
     if n >= 3600 then return string.format('%d:%02d:%02d', n / 3600, n / 60 % 60, n % 60) end
@@ -31,6 +47,16 @@ local function rect(x, y, w, h, r, color, a)
     local k = r * .5522848
     path(x, y, string.format('m %.2f 0 l %.2f 0 b %.2f 0 %.2f %.2f %.2f %.2f l %.2f %.2f b %.2f %.2f %.2f %.2f %.2f %.2f l %.2f %.2f b %.2f %.2f 0 %.2f 0 %.2f l 0 %.2f b 0 %.2f %.2f 0 %.2f 0',
         r,w-r,w-r+k,w,r-k,w,r,w,h-r,w,h-r+k,w-r+k,h,w-r,h,r,h,r-k,h,h-r+k,h-r,r,r-k,r-k,r), color, a)
+end
+-- Align gradient strips to output pixels so fractional DPI does not leave seams.
+local function gradient(y,height,from_alpha,to_alpha,power)
+    local top=math.floor(y*scale+.5)
+    local pixels=math.max(1,math.floor(height*scale+.5))
+    local step=math.max(1,math.ceil(pixels/256))
+    for pixel=0,pixels-1,step do
+        local progress=(pixel/math.max(1,pixels-1))^(power or 1)
+        rect(0,(top+pixel)/scale,W,math.min(step,pixels-pixel)/scale,0,'000000',from_alpha+(to_alpha-from_alpha)*progress)
+    end
 end
 local function text(x, y, value, size, a, align, bold, max_width)
     local clip = max_width and string.format('\\clip(%.0f,0,%.0f,%.0f)', x, x + max_width, H) or ''
@@ -135,10 +161,11 @@ local function menu_rows()
 end
 local function render()
     local dims=prop('osd-dimensions');if not dims or dims.w==0 or dims.h==0 then return end
-    scale=math.min(math.max(prop('display-hidpi-scale',1),dims.h/900),dims.h/360)
+    scale=math.min(math.max(prop('display-hidpi-scale',1),dims.h/900),dims.h/360,dims.w/320)
     W,H=dims.w/scale,dims.h/scale
     local mouse=prop('mouse-pos',{});mx,my=(mouse.x or -1)/scale,(mouse.y or -1)/scale
-    panel={x=math.max(20,(W-720)/2),y=H-148,w=math.min(720,W-40),h=116}
+    local margin=W<440 and 16 or W<650 and 24 or 32
+    panel={x=math.max(margin,(W-1120)/2),y=H-114,w=math.min(1120,W-margin*2),h=90}
     local now=mp.get_time()
     if menu and menu~='overview' and menu~='source' then
         local trigger=nil
@@ -153,51 +180,57 @@ local function render()
     local dt=math.min(.1,now-last_tick);last_tick=now
     opacity=clamp(opacity+(visible and dt*7 or -dt*5),0,1)
     if last_visible ~= (opacity>0) then last_visible=opacity>0;mp.set_property_native('user-data/luma-osc/visible',last_visible) end
+    subtitle_safe_area(opacity>0)
     frame,elements,menu_box={},{},nil
     if last_menu~=menu then last_menu=menu;mp.set_property_native('user-data/luma-osc/menu',menu or false) end
     if opacity <= 0 then
         overlay:remove();mp.disable_key_bindings('luma-panel');mp.disable_key_bindings('luma-top');mp.disable_key_bindings('luma-menu');return
     end
-    -- Soft edge shading keeps controls readable over bright frames.
-    for i=0,59 do
-        rect(0,H-240+i*4,W,4,0,'000000',255-i*1.2)
-        rect(0,i*3,W,3,0,'000000',math.min(255,150+i*1.75))
-    end
-    button('back',26,28,40,40,back,'返回影音库')
-    rect(26,28,40,40,20,'FFFFFF',232);icon('back',34,36,1)
-    text(83,31,prop('pause') and '已暂停' or '正在播放',10,110)
-    text(83,55,prop('media-title','Luma'),20,0,4,true,math.max(100,W-265))
-    button('minimize',W-102,30,34,34,function()mp.set_property_native('window-minimized',true)end,'最小化');icon('minimize',W-97,35,1,55)
-    button('close',W-58,30,34,34,function()mp.commandv('quit')end,'关闭播放器');icon('close',W-53,35,1,55)
+    -- Fade the edges instead of putting an opaque panel over the picture.
+    local shade=math.min(200,H*.6)
+    gradient(H-shade,shade,255,90,1.5)
+    gradient(0,100,145,255,1)
+    button('back',margin,24,40,40,back,'返回上一层');icon('back',margin+10,34,.85)
+    text(margin+52,44,prop('media-title','Luma'),17,0,4,true,math.max(60,W-margin*2-156))
+    button('minimize',W-margin-84,24,40,40,function()mp.set_property_native('window-minimized',true)end,'最小化');icon('minimize',W-margin-74,34,.85,45)
+    button('close',W-margin-40,24,40,40,function()mp.commandv('quit')end,'关闭播放器');icon('close',W-margin-30,34,.85,45)
     local x,y,w=panel.x,panel.y,panel.w
-    rect(x-1,y-1,w+2,118,21,'FFFFFF',219)
-    rect(x,y,w,116,20,'29272A',37)
-    local compact=w<600
-    local center=x+(compact and 36 or w/2)
-    if not compact then button('volume',x+16,y+16,34,36,function()mp.commandv('cycle','mute')end,'静音');icon('volume',x+21,y+22,1,35) end
-    if not compact then
-        local v=button('volume-slider',x+59,y+21,72,26,nil,'音量');v.slider='volume'
+    local compact=W<600
+    local narrow=W<440
+    local center=narrow and x+22 or x+w/2
+    local row=y+44
+    if not narrow then
+        button('volume',x,row,40,40,function()mp.commandv('cycle','mute')end,'静音');icon('volume',x+11,row+11,.75,20)
+    end
+    if W>=760 then
+        local v=button('volume-slider',x+44,row+7,72,26,nil,'音量');v.slider='volume'
         rect(v.x,v.y+11,v.w,3,1.5,'FFFFFF',205);rect(v.x,v.y+11,v.w*clamp(prop('volume',100)/100,0,1),3,1.5,'FFFFFF',45)
     end
-    if not compact then button('rewind',center-89,y+10,42,48,function()mp.commandv('seek',-10,'relative+exact')end,'后退 10 秒');icon('rewind',center-82,y+20,1.05,20) end
-    button('toggle',center-22,y+10,44,44,function()mp.commandv('cycle','pause');activity()end,'播放 / 暂停');rect(center-22,y+10,44,44,24,'FFFFFF',242);icon(prop('pause') and 'play' or 'pause',center-13,y+19,1.1)
-    if not compact then button('forward',center+47,y+10,42,48,function()mp.commandv('seek',10,'relative+exact')end,'前进 10 秒');icon('forward',center+54,y+20,1.05,20) end
-    button('speed',x+w-192,y+12,40,40,function()toggle_menu('speed')end,'播放速度');text(x+w-172,y+34,prop('speed',1)..'×',12,25,5,true)
-    button('audio',x+w-148,y+12,40,40,function()toggle_menu('audio')end,'音轨语言');icon('audio',x+w-138,y+17,.85,30);text(x+w-128,y+46,'语言',8,95,5)
-    button('subtitles',x+w-104,y+12,40,40,function()toggle_menu('subtitles')end,'字幕');icon('subtitles',x+w-94,y+17,.85,30);text(x+w-84,y+46,'字幕',8,95,5)
-    button('fullscreen',x+w-60,y+12,40,40,function()mp.commandv('cycle','fullscreen')end,'全屏');icon('fullscreen',x+w-50,y+22,.85,30)
-    local timeline=button('seek',x+20,y+64,w-40,20,nil);timeline.slider='seek'
+    if not compact then
+        button('rewind',center-78,row,40,40,function()mp.commandv('seek',-10,'relative+exact')end,'后退 10 秒');icon('rewind',center-69,row+9,.92,20)
+        button('forward',center+38,row,40,40,function()mp.commandv('seek',10,'relative+exact')end,'前进 10 秒');icon('forward',center+47,row+9,.92,20)
+    end
+    button('toggle',center-22,row-2,44,44,function()mp.commandv('cycle','pause');activity()end,'播放 / 暂停')
+    rect(center-22,row-2,44,44,22,'FFFFFF',239);icon(prop('pause') and 'play' or 'pause',center-11,row+9,.92)
+    button('speed',x+w-172,row,40,40,function()toggle_menu('speed')end,'播放速度');text(x+w-152,row+20,prop('speed',1)..'×',12,20,5,true)
+    button('audio',x+w-128,row,40,40,function()toggle_menu('audio')end,'音轨语言');icon('audio',x+w-117,row+11,.75,20)
+    button('subtitles',x+w-84,row,40,40,function()toggle_menu('subtitles')end,'字幕');icon('subtitles',x+w-73,row+11,.75,20)
+    button('fullscreen',x+w-40,row,40,40,function()mp.commandv('cycle','fullscreen')end,'全屏');icon('fullscreen',x+w-29,row+11,.75,20)
+    local timeline=button('seek',x,y,w,18,nil);timeline.slider='seek'
     local position,duration=prop('time-pos',0),prop('duration',0)
     local ratio=duration>0 and clamp(position/duration,0,1) or 0
-    rect(timeline.x,y+74,timeline.w,3,1.5,'FFFFFF',205);rect(timeline.x,y+74,timeline.w*ratio,3,1.5,'FFFFFF',12)
+    local th=(inside(timeline) or drag=='seek') and 5 or 3
+    if last_seek_height~=th then last_seek_height=th;mp.set_property_native('user-data/luma-osc/seek-height',th) end
+    rect(timeline.x,y+9-th/2,timeline.w,th,th/2,'FFFFFF',194);rect(timeline.x,y+9-th/2,timeline.w*ratio,th,th/2,'FFFFFF',15)
     if inside(timeline) or drag=='seek' then
-        rect(timeline.x+timeline.w*ratio-4,y+71,8,8,4,'FFFFFF',0)
+        rect(timeline.x+timeline.w*ratio-4,y+5,8,8,4,'FFFFFF',0)
         local at=clamp((mx-timeline.x)/timeline.w,0,1)
-        rect(timeline.x+timeline.w*at-30,y+43,60,26,7,'19171B',8);text(timeline.x+timeline.w*at,y+56,clock(duration*at),11,0,5)
+        local tip=clamp(timeline.x+timeline.w*at,x+30,x+w-30)
+        rect(tip-30,y-31,60,25,7,'19171B',15);text(tip,y-18,clock(duration*at),11,0,5)
     end
-    text(x+20,y+96,clock(position),11,110)
-    text(x+w-20,y+96,'−'..clock(duration-position),11,110,6)
-    if prop('pause') then text(center,y+96,'已暂停',10,150,5) end
+    text(x,y+27,clock(position),11,80)
+    text(x+w,y+27,'−'..clock(duration-position),11,80,6)
+    if prop('pause') then text(x+w/2,y+27,'已暂停',10,130,5) end
     if menu=='overview' or menu=='source' then
         local media=prop('user-data/luma-osc/media',{})
         local mw=math.min(640,W-40)
@@ -252,7 +285,7 @@ local function render()
             rect(tx-64,item.y-37,128,28,7,'19171B',10);text(tx,item.y-23,item.label,11,0,5)
         end
     end
-    local signature=W..'x'..H..':'..tostring(menu)..':'..page
+    local signature=W..'x'..H..':'..scale..':'..tostring(menu)..':'..page
     if signature~=layout_signature then
         layout_signature=signature
         local buttons={}
@@ -260,7 +293,7 @@ local function render()
         mp.set_property_native('user-data/luma-osc/layout',{kind=menu or false,panel=panel,menu=menu_box,buttons=buttons,scale=scale,width=W,height=H})
     end
     overlay.res_x,overlay.res_y,overlay.z,overlay.data=W,H,1000,table.concat(frame,'\n');overlay:update()
-    mp.set_mouse_area(x*scale,y*scale,(x+w)*scale,(y+116)*scale,'luma-panel');mp.enable_key_bindings('luma-panel')
+    mp.set_mouse_area(x*scale,y*scale,(x+w)*scale,(y+90)*scale,'luma-panel');mp.enable_key_bindings('luma-panel')
     mp.set_mouse_area(0,0,W*scale,86*scale,'luma-top');mp.enable_key_bindings('luma-top')
     if menu_box then mp.set_mouse_area(menu_box.x*scale,menu_box.y*scale,(menu_box.x+menu_box.w)*scale,(menu_box.y+menu_box.h)*scale,'luma-menu');mp.enable_key_bindings('luma-menu') else mp.disable_key_bindings('luma-menu') end
 end
@@ -297,6 +330,7 @@ mp.add_key_binding('Alt+LEFT','luma-go-back',back)
 mp.add_key_binding('MBTN_LEFT','luma-background-click',function()if menu then menu=nil else mp.commandv('cycle','pause') end;activity()end)
 mp.register_script_message('luma-show',function()activity();render()end)
 mp.register_event('file-loaded',activity)
+mp.register_event('shutdown',function()pcall(mp.set_property_number,'sub-margin-y-offset',subtitle_offset)end)
 mp.observe_property('pause','bool',function()activity()end)
 mp.set_property_native('user-data/luma-osc/loaded',true)
 mp.add_periodic_timer(1/30,render)

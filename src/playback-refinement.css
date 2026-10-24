@@ -1,28 +1,36 @@
-/* Shared proportions for the video dock and the companion library dock. */
-.cinema-dock,.mpv-panel{box-sizing:border-box;width:min(720px,calc(100% - 40px));height:116px;padding:12px 20px 14px;border-radius:20px}
-.cinema-dock-row,.mpv-panel-row{height:44px;margin-bottom:8px;gap:12px;grid-template-columns:1fr 176px 1fr}
-.cinema-dock .cinema-button,.mpv-panel button,.mpv-panel .mpv-track-button{box-sizing:border-box;width:40px;height:40px;border-radius:10px;padding:0;flex-shrink:0}
-.cinema-dock .cinema-toggle,.mpv-panel .mpv-panel-toggle{width:44px;height:44px;border-radius:50%;background:#ffffff0c}
-.cinema-transport{justify-content:center;gap:16px}.cinema-dock .cinema-skip{width:34px}.cinema-options{gap:4px}
-.cinema-dock .cinema-track-button{width:40px;gap:2px}.cinema-track-button>small{font-size:8px;line-height:9px}.cinema-options .cinema-button:first-child:has(.cinema-speed){width:40px}
-.cinema-volume{gap:4px}.cinema-volume input{width:64px}.cinema-timeline{height:20px}.cinema-timestamps{height:16px;line-height:16px}
-.cinema-menu-anchor,.mpv-track-picker{position:relative}
-.cinema-menu-anchor:has([role=menu])::after,.mpv-track-picker:has([role=menu])::after{content:'';position:absolute;left:0;right:0;bottom:100%;height:12px}
-.cinema-menu,.cinema-audio,.cinema-subtitles,.mpv-panel .mpv-track-menu{position:absolute;inset:auto auto calc(100% + 10px) 50%;width:240px;max-height:min(340px,calc(100dvh - 215px));padding:8px;z-index:60;transform:translateX(calc(-50% + var(--popover-shift,0px)));animation:popover-appear .14s ease-out;border-radius:15px}
-.cinema-menu>button,.mpv-panel .mpv-track-menu>button{min-height:36px;height:auto;width:100%;border-radius:8px;padding:9px 10px;line-height:1.5}
-.cinema-menu h3{font-size:10px;padding:8px 10px 11px}.cinema-menu::-webkit-scrollbar{width:4px}
-.mpv-panel{display:block;left:calc(var(--sidebar-size) + var(--content-gutter));right:var(--content-gutter);width:auto;max-width:720px;margin-inline:auto}
-.mpv-panel-row{display:grid;grid-template-columns:1fr 44px 1fr;align-items:center}
-.mpv-panel>div{max-width:none;min-width:0}.mpv-panel-title{min-width:0;max-width:220px}.mpv-panel-title strong{font-size:11px;font-weight:500}.mpv-panel-title small{font-size:9px;margin-top:5px}
-.mpv-panel-options{display:flex;justify-content:flex-end;align-items:center;gap:4px}.mpv-panel .mpv-track-button{display:flex;flex-direction:column;justify-content:center;gap:2px;border:0;background:transparent}.mpv-panel .mpv-track-button>span{display:none}
-.mpv-track-button::after{font-size:8px;line-height:9px;color:#ffffff90}.mpv-track-button[aria-label="mpv 音轨语言"]::after{content:'语言'}.mpv-track-button[aria-label="mpv 字幕"]::after{content:'字幕'}
-.mpv-panel>.cinema-range{display:block;width:100%;height:20px;accent-color:initial;--range-fill:0%}.mpv-panel-time{display:flex;justify-content:space-between;height:16px;line-height:16px}
+/* A lightweight cinema overlay: the picture remains visible between controls. */
+html:has(.cinema-player){overflow:hidden}
+.cinema-shade{background:linear-gradient(0deg,#000b 0,#0006 100px,transparent min(200px,60vh)),linear-gradient(180deg,#0007,transparent 100px);transition:opacity .3s}
+.cinema-heading{inset:24px 32px auto;gap:12px}.cinema-title{gap:2px;max-width:calc(100% - 190px)}
+.cinema-title>span{display:none}.cinema-title>strong{font-size:18px;font-weight:550;line-height:25px;letter-spacing:-.2px}.cinema-title>small{font-size:11px;line-height:16px;color:#ffffff8c}
+.cinema-heading .cinema-button{width:40px;height:40px;border:0;background:transparent;backdrop-filter:none;border-radius:10px;color:#ffffffe0}.cinema-heading .cinema-button:hover{background:#ffffff14}
+.cinema-window-actions{display:flex;gap:4px;align-items:center;margin-left:auto}.cinema-back svg{width:20px;height:20px}
+.cinema-dock{box-sizing:border-box;bottom:max(24px,env(safe-area-inset-bottom));width:min(1120px,calc(100% - 64px));height:90px;padding:0;border:0;border-radius:0;background:transparent;backdrop-filter:none;box-shadow:none;text-shadow:0 1px 8px #0006}
+.cinema-dock-row{display:grid;height:44px;margin:12px 0 0;grid-template-columns:minmax(40px,1fr) 156px minmax(176px,1fr);align-items:center;gap:12px}
+.cinema-dock .cinema-button,.mpv-panel button,.mpv-panel .mpv-track-button{box-sizing:border-box;flex-shrink:0;width:40px;height:40px;padding:0;border-radius:10px}
+.cinema-dock .cinema-toggle,.mpv-panel .mpv-panel-toggle{width:44px;height:44px;border-radius:50%;background:#ffffff10}.cinema-dock .cinema-toggle:hover{background:#ffffff23}
+.cinema-dock .cinema-button svg{width:18px;height:18px;stroke-width:1.6}.cinema-dock .cinema-toggle svg{width:22px;height:22px}.cinema-dock .cinema-skip svg{width:22px;height:22px}
+.cinema-transport{justify-content:center;gap:16px}.cinema-dock .cinema-skip{width:40px}.cinema-skip>span{top:17px;left:15px;font-size:8px;line-height:10px}
+.cinema-options{gap:4px}.cinema-options .cinema-button:first-child:has(.cinema-speed){width:40px}.cinema-dock .cinema-track-button{width:40px;gap:0}.cinema-track-button>small{display:none}
+.cinema-volume{display:flex;gap:4px}.cinema-volume input{width:72px}.cinema-timeline{height:18px}.cinema-timestamps{height:16px;line-height:16px;font-size:11px;color:#ffffffa6}
+.cinema-timestamps>span:nth-child(2){font-size:10px;color:#ffffff7d}.cinema-seek-preview{bottom:24px;min-width:54px;text-align:center}
+.cinema-timeline .cinema-range::-webkit-slider-runnable-track,.mpv-panel>.cinema-range::-webkit-slider-runnable-track{height:3px}
+.cinema-timeline .cinema-range:is(:hover,:focus-visible,:active)::-webkit-slider-runnable-track{height:5px}
+.cinema-timeline .cinema-range::-webkit-slider-thumb{width:8px;height:8px;margin-top:-2.5px}.cinema-timeline .cinema-range:is(:hover,:focus-visible,:active)::-webkit-slider-thumb{margin-top:-1.5px;opacity:1}
+.cinema-menu-anchor,.mpv-track-picker{position:relative}.cinema-menu-anchor:has([role=menu])::after,.mpv-track-picker:has([role=menu])::after{content:'';position:absolute;left:0;right:0;bottom:100%;height:12px}
+.cinema-menu,.cinema-audio,.cinema-subtitles,.mpv-panel .mpv-track-menu{position:absolute;inset:auto auto calc(100% + 10px) 50%;width:240px;max-height:min(340px,calc(100dvh - 180px));padding:8px;z-index:60;transform:translateX(calc(-50% + var(--popover-shift,0px)));animation:popover-appear .14s ease-out;border-radius:15px;text-shadow:none}
+.cinema-menu>button,.mpv-panel .mpv-track-menu>button{min-height:36px;height:auto;width:100%;border-radius:8px;padding:9px 10px;line-height:1.5}.cinema-menu h3{font-size:10px;padding:8px 10px 11px}.cinema-menu::-webkit-scrollbar{width:4px}
+/* The library companion stays a compact card rather than darkening the library. */
+.mpv-panel{box-sizing:border-box;display:flex;flex-direction:column;left:calc(var(--sidebar-size) + var(--content-gutter));right:var(--content-gutter);width:auto;max-width:760px;height:100px;margin-inline:auto;padding:10px 16px 12px;border-radius:16px;gap:0}
+.mpv-panel>div{max-width:none;min-width:0;width:100%}.mpv-panel-row{display:grid;grid-template-columns:1fr 44px 1fr;align-items:center;gap:12px;order:2;height:44px;margin-top:4px}
+.mpv-panel-title{min-width:0;max-width:220px}.mpv-panel-title strong{font-size:11px;font-weight:500}.mpv-panel-title small{font-size:9px;margin-top:5px}
+.mpv-panel-options{display:flex;justify-content:flex-end;align-items:center;gap:4px}.mpv-panel .mpv-track-button{display:flex;align-items:center;justify-content:center;border:0;background:transparent}.mpv-panel .mpv-track-button>span,.mpv-track-button::after{display:none}
+.mpv-panel>.cinema-range{display:block;order:0;width:100%;height:16px;min-height:16px;flex:none;accent-color:initial;--range-fill:0%}.mpv-panel-time{order:1;display:flex;justify-content:space-between;height:14px;line-height:14px}
 .mpv-panel .mpv-track-menu button:focus-visible{outline:1px solid #ffffff65;outline-offset:-1px}
-.cinema-wordmark{margin-left:auto}.cinema-heading>.cinema-button:last-child{margin-left:4px;color:#ffffffa0}
-html[data-theme=light] .mpv-track-button::after{color:#777782}html[data-theme=light] .mpv-panel .mpv-panel-toggle{background:#25252d06}
-html[data-theme=light] .mpv-panel .cinema-range::-webkit-slider-runnable-track{background:linear-gradient(to right,#8e7752 var(--range-fill),#25252d20 var(--range-fill))}
-html[data-theme=light] .mpv-panel .cinema-range::-webkit-slider-thumb{background:#8e7752}
+html[data-theme=light] .mpv-panel .mpv-panel-toggle{background:#25252d06}html[data-theme=light] .mpv-panel .cinema-range::-webkit-slider-runnable-track{background:linear-gradient(to right,#8e7752 var(--range-fill),#25252d20 var(--range-fill))}html[data-theme=light] .mpv-panel .cinema-range::-webkit-slider-thumb{background:#8e7752}
 @keyframes popover-appear{from{opacity:0}to{opacity:1}}
-@media(max-width:1050px){.mpv-panel{left:calc(var(--sidebar-size) + var(--content-gutter));right:var(--content-gutter)}}
-@media(max-width:650px){.cinema-dock,.mpv-panel{width:calc(100% - 24px);padding:12px 12px 14px}.mpv-panel{width:auto}.cinema-dock-row{grid-template-columns:0 1fr 176px;gap:4px}.cinema-volume{display:none}.cinema-transport{gap:7px}.mpv-panel-title{max-width:120px}.cinema-options .cinema-track-button,.cinema-options .cinema-button{width:40px}.cinema-menu-anchor .cinema-audio,.cinema-menu-anchor .cinema-subtitles{position:absolute;inset:auto auto calc(100% + 10px) 50%;width:240px}}
+@media(max-width:760px){.cinema-volume input{display:none}.cinema-title>strong{font-size:16px}.mpv-panel-title{max-width:150px}}
+@media(max-width:650px){.cinema-heading{inset:20px 24px auto}.cinema-dock{width:calc(100% - 48px);padding:0;bottom:24px;border-radius:0}.cinema-dock-row{gap:12px}.cinema-menu-anchor .cinema-audio,.cinema-menu-anchor .cinema-subtitles{position:absolute;inset:auto auto calc(100% + 10px) 50%;width:240px}.cinema-options .cinema-track-button,.cinema-options .cinema-button{width:40px}.mpv-panel-title{max-width:120px}}
+@media(max-width:600px){.cinema-dock .cinema-skip{display:none}.cinema-dock-row{grid-template-columns:minmax(40px,1fr) 44px minmax(176px,1fr)}.cinema-title{max-width:calc(100% - 144px)}.cinema-heading{gap:8px}}
+@media(max-width:440px){.cinema-heading{inset:16px 16px auto}.cinema-dock{width:calc(100% - 32px)}.cinema-volume{display:none}.cinema-dock-row{grid-template-columns:44px 1fr}.cinema-options .cinema-button:first-child:has(.cinema-speed){width:40px}.cinema-transport{justify-content:center}.cinema-title>small{display:none}.mpv-panel-title{max-width:85px}}
 @media(prefers-reduced-motion:reduce){.cinema-menu,.mpv-track-menu{animation:none}}
