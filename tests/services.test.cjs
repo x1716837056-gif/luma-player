@@ -15,8 +15,8 @@ test('large cloud imports and metadata matching never probe every remote video; 
   const directory=await temporary(t),db=openLibraryDatabase(directory);let inputCalls=0;
   const prefs={autoScrape:true,watchFolders:false,tmdbToken:''};const service=new LibraryService({database:db,directory,getSettings:()=>prefs,notify(){},authorize(){},getInput:async()=>{inputCalls++;throw Error('Unexpected video download');},fetcher:async()=>new Response(JSON.stringify({results:[]}))});await service.init();
   const source={id:'cloud',type:'cloud',path:'cloud://a/',accountId:'a',status:'online'},items=Array.from({length:1000},(_,i)=>({...media,id:'cloud-'+i,title:'Film '+i,path:`cloud://a/Film.${i}.2024.mkv`,remote:{accountId:'a',path:`/Film.${i}.2024.mkv`},sourceId:'cloud',technical:undefined}));
-  service.remote={scan:async()=>({source,media:items,warnings:[]})};await service.scan(source.path,'cloud');await service.queue.onIdle();assert.equal(service.library.media.length,1000);assert.equal(inputCalls,0);assert.equal(service.stats.total,0);
-  prefs.tmdbToken='test';service.enqueue(items.slice(0,2));await service.queue.onIdle();assert.equal(inputCalls,0);assert.equal(service.library.media[0].metadataStatus,'review');
+  service.remote={scan:async()=>({source,media:items,warnings:[]})};await service.scan(source.path,'cloud');await service.onIdle();assert.equal(service.library.media.length,1000);assert.equal(inputCalls,0);assert.equal(service.stats.total,0);
+  prefs.tmdbToken='test';service.enqueue(items.slice(0,2));await service.onIdle();assert.equal(inputCalls,0);assert.equal(service.library.media[0].metadataStatus,'review');
   service.personal(items[0].id,{notes:'keep notes'});service.patch(items[0].id,{progress:.4});service.remote.scan=async(_,options)=>{await options.onBatch({source,media:[{...items[0],id:'new-discovery',path:'cloud://a/New.2025.mkv'}],warnings:[]});throw new DOMException('Canceled','AbortError');};await assert.rejects(service.scan(source.path,'cloud'),{name:'AbortError'});const saved=db.load();assert.equal(saved.sources[0].status,'online');assert.equal(saved.media.length,1001);assert.equal(saved.media.find(m=>m.id===items[0].id).progress,.4);assert.equal(saved.media.find(m=>m.id===items[0].id).notes,'keep notes');assert.ok(saved.media.every(m=>!m.missing));await service.close();db.close();
 });
 
@@ -92,10 +92,10 @@ test('directory watching imports new files; missing or offline sources retain fa
   await fs.copyFile('public/demo.mp4',path.join(movies,'Second.2025.mp4'));
   await until(()=>service.library.media.length===2);
   assert.equal(service.library.media.find(m=>m.id===first.id).favorite,true);
-  prefs.watchFolders=false;await service.syncWatchers();await service.queue.onIdle();
+  prefs.watchFolders=false;await service.syncWatchers();await service.onIdle();
   await fs.unlink(path.join(movies,'First.2024.mp4'));await service.scan(movies,'local');
   assert.equal(service.library.media.find(m=>m.id===first.id).missing,true);
-  await service.queue.onIdle();
+  await service.onIdle();
   await fs.rename(movies,movies+'-offline');await assert.rejects(service.scan(movies,'local'),/无法访问/);
   assert.equal(service.library.sources[0].status,'offline');assert.equal(service.library.media.length,2);
   assert.equal(db.load().media.find(m=>m.id===first.id).progress,.45);

@@ -5,7 +5,6 @@ const path = require('node:path');
 const { spawn } = require('node:child_process');
 const { Readable } = require('node:stream');
 const { parseRange } = require('./library.cjs');
-const { searchMetadata } = require('./metadata.cjs');
 const { openLibraryDatabase } = require('./database.cjs');
 const { LibraryService } = require('./library-service.cjs');
 const { MpvPlayer } = require('./mpv.cjs');
@@ -72,7 +71,7 @@ function wireIpc() {
     // Keep directory enumeration, NAS polling, probing and scraping off the first-frame path.
     backgroundTimer=setTimeout(()=>{
       backgroundWork=service.syncWatchers().catch(error=>console.error('Folder watching could not start:',error.message)).then(()=>{
-        if(!closing)service.enqueue((service.library?.media||[]).filter(m=>m.path && !m.missing && (!m.technical || (settings.autoScrape && settings.tmdbToken && ((!m.metadataOrigin && !m.tmdbId && m.metadataStatus!=='review') || (m.tmdbId && !m.certificationCheckedAt))))));
+        if(!closing)service.enqueue((service.library?.media||[]).filter(m=>m.path && !m.missing && (!m.technical || (settings.autoScrape && settings.tmdbToken && ((!m.metadataOrigin && !m.tmdbId && m.metadataStatus!=='review') || (m.tmdbId && !m.certificationCheckedAt)||service.needsArtwork(m))))));
       });
     },1000);
   });
@@ -108,6 +107,7 @@ function wireIpc() {
     else if(next.tmdbToken)throw new Error('系统凭据加密不可用，无法安全保存 TMDB 令牌。');
     await writeJson('settings.json',persisted);settings=next;
     if(settings.watchFolders!==previous.watchFolders)await service.syncWatchers();
+    if(settings.tmdbToken!==previous.tmdbToken||settings.metadataLanguage!==previous.metadataLanguage||(!settings.autoScrape&&previous.autoScrape)){service.cancel();service.enqueue((service.library?.media||[]).filter(m=>m.imported&&!m.remote&&!m.technical&&!m.missing));}
     if(settings.autoScrape && settings.tmdbToken && (settings.tmdbToken!==previous.tmdbToken || settings.autoScrape!==previous.autoScrape || settings.metadataLanguage!==previous.metadataLanguage))service.enqueue((service.library?.media||[]).filter(m=>m.imported && ((!m.metadataOrigin && !m.tmdbId) || (m.tmdbId && !m.certificationCheckedAt))));
   });
   ipcMain.handle('source:select',async ()=>{
@@ -123,9 +123,9 @@ function wireIpc() {
   ipcMain.handle('cloud:cancel-read',(_,id,folder)=>cloud.cancel(id,folder));
   ipcMain.handle('cloud:add',(_,id,folder)=>{if(!vault.account(id))throw Error('请先登录网盘。');return service.scan('cloud://'+id+String(folder||'/').split('/').map(encodeURIComponent).join('/'),'cloud');});
   ipcMain.handle('cloud:logout',async(_,id)=>{if(service.library?.media.find(m=>m.id===player.state.mediaId)?.remote?.accountId===id)await player.stop();await vault.remove(id);cloud.disconnect(id);await cloudCore.forget(id).catch(()=>{});for(const m of service.library?.media||[])if(m.remote?.accountId===id)m.missing=true;for(const source of service.library?.sources||[])if(source.accountId===id)source.status='offline';if(service.library)service.save();});
-  ipcMain.handle('metadata:search',(_,media,query,kind)=>searchMetadata(media,query,kind,settings.tmdbToken,settings.metadataLanguage,networkFetch));
+  ipcMain.handle('metadata:search',(_,media,query,kind)=>service.search(media,query,kind));
   ipcMain.handle('metadata:apply',(_,id,candidate)=>service.match(id,candidate));
-  ipcMain.handle('tasks:start',()=>{if(!settings.tmdbToken)throw new Error('请先在设置中填写 TMDB API Key / 读取令牌，再开始自动匹配。');return service.enqueue((service.library?.media||[]).filter(m=>m.imported && ((!m.metadataOrigin && !m.tmdbId) || (m.tmdbId && !m.certificationCheckedAt))),true);});
+  ipcMain.handle('tasks:start',()=>{if(!settings.tmdbToken)throw new Error('请先在设置中填写 TMDB API Key / 读取令牌，再开始自动匹配。');return service.enqueue((service.library?.media||[]).filter(m=>m.imported && ((!m.metadataOrigin && !m.tmdbId) || (m.tmdbId && !m.certificationCheckedAt)||service.needsArtwork(m))),true);});
   ipcMain.handle('tasks:cancel',()=>service.cancel());
   ipcMain.handle('tasks:status',()=>service.status());
   ipcMain.handle('player:state',()=>player.state);

@@ -86,7 +86,7 @@ export type DuplicateStatus={running:boolean;phase:string;total:number;checked:n
 export type ColorMapping = {output:'auto'|'sdr'|'hdr';curve:'auto'|'spline'|'bt.2390'|'bt.2446a'|'st2094-40'|'st2094-10';peakNits:number;dynamicPeak:boolean};
 export type Settings = { theme: 'dark' | 'light'; tmdbToken: string; metadataLanguage: string; autoplay: boolean; defaultPlayer: 'auto' | 'native' | 'mpv'; mpvPath: string; autoScrape: boolean; watchFolders: boolean; colorMapping?:ColorMapping; };
 export type ScanResult = { media: Media[]; source: Source; warnings: string[] };
-export type TaskStatus = { running: boolean; completed: number; total: number; matched: number; review: number; failed: number; queued: number; active?: number };
+export type TaskStatus = { running: boolean; completed: number; total: number; matched: number; review: number; failed: number; queued: number; active?: number; probeActive?:number;artworkActive?:number;artworkQueued?:number;error?:string };
 export type PlayerState = { active: boolean; error?: string; notice?:string; mediaId?: string; title?: string; position?: number; duration?: number; paused?: boolean; tracks?: {id: number; type: string; title?: string; lang?: string; selected?: boolean}[] };
 
 declare global {
