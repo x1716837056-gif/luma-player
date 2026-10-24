@@ -8,6 +8,7 @@ const stableId = value => crypto.createHash('sha256').update(value).digest('hex'
 
 const { parseRelease } = require('../shared/filename.mjs');
 const { episodeIdentity } = require('../shared/series.mjs');
+const {recognitionHints}=require('../shared/recognition.mjs');
 function parseFilename(filename) {
   const {title,originalTitle,year,kind,episode}=parseRelease(filename);
   return {title,originalTitle,year,kind,episode};
@@ -107,13 +108,15 @@ async function scanFolder(folder, type = 'local') {
       const inherited=await readSeriesNfo(directory,root,seriesCache);
       const identity=episodeIdentity({...parsed,...inherited,...sidecar,path:filename});
       const series=identity?{kind:'tv',seriesTitle:inherited.seriesTitle||identity.title,seriesOriginalTitle:inherited.seriesOriginalTitle||identity.originalTitle,seriesYear:identity.year,season:identity.season??undefined,episodeNumber:identity.number??undefined,episode:identity.number!==null?`第 ${identity.season??1} 季 · 第 ${identity.number} 集`:undefined}:{};
-      media.push({
+      const item={
         id: stableId(filename.toLowerCase()), ...parsed, genre: [], duration: 0, rating: '', certification: '', poster: '', backdrop: '',
         description: '尚未匹配影片资料。可以在影片详情中手动匹配元数据。',
         fileSize: info?.size, modifiedAt: info?.mtimeMs, sourceId, path: filename, videoUrl: mediaUrl(filename), quality: /2160p|4k/i.test(entry.name) ? '4K' : /1080p/i.test(entry.name) ? '1080P' : /720p/i.test(entry.name) ? '720P' : '本地',
         addedAt: info?.birthtimeMs || Date.now(), imported: true, ...inherited,...sidecar,...series, ...(Object.keys(sidecar).some(key => !['poster','backdrop'].includes(key))||inherited.seriesTitle ? {metadataOrigin:'nfo',metadataStatus:'matched'} : {}),
         ...(identity?{title:inherited.seriesTitle||identity.title,originalTitle:inherited.seriesOriginalTitle||identity.originalTitle}:{}),
-      });
+      };
+      if(!item.metadataOrigin){const hint=recognitionHints(item);Object.assign(item,{title:hint.title,originalTitle:hint.originalTitle,year:hint.year,kind:hint.kind});}
+      media.push(item);
     }
   }
   return { media, source, warnings };

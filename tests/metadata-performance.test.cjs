@@ -1,12 +1,12 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs/promises'),os=require('node:os'),path=require('node:path'),{setTimeout:delay}=require('node:timers/promises');
 const {MetadataNetwork}=require('../electron/metadata-network.cjs'),{LibraryService}=require('../electron/library-service.cjs'),{openLibraryDatabase}=require('../electron/database.cjs');
 const picture=()=>new Response(new Uint8Array([255,216,255,217]));
-const movie=(id,extra={})=>({id,title:'Film',originalTitle:'Film',kind:'movie',year:2024,path:`cloud://a/Film.2024.${id}.mkv`,remote:{accountId:'a',path:`/Film.2024.${id}.mkv`},genre:[],duration:60,poster:'',backdrop:'',rating:'',certification:'',description:'',technical:{durationSeconds:3600},imported:true,addedAt:1,...extra});
+const movie=(id,extra={})=>({id,title:'Feature',originalTitle:'Feature',kind:'movie',year:2024,path:`cloud://a/Feature.2024.${id}.mkv`,remote:{accountId:'a',path:`/Feature.2024.${id}.mkv`},genre:[],duration:60,poster:'',backdrop:'',rating:'',certification:'',description:'',technical:{durationSeconds:3600},imported:true,addedAt:1,...extra});
 function deferred(){let resolve;const promise=new Promise(r=>resolve=r);return {promise,resolve};}
 function waiting(gate,signal){return new Promise((resolve,reject)=>{const abort=()=>reject(signal.reason);signal?.addEventListener('abort',abort,{once:true});gate.promise.then(value=>{signal?.removeEventListener('abort',abort);resolve(value);});if(signal?.aborted)abort();});}
 async function until(check){const end=Date.now()+5000;while(!await check()){if(Date.now()>end)throw Error('Expected metadata state did not settle');await delay(10);}}
 async function library(t,media,fetcher,options={}){const directory=await fs.mkdtemp(path.join(os.tmpdir(),'luma-metadata-test-')),db=openLibraryDatabase(directory);db.save({demo:false,sources:[],media});const prefs={autoScrape:true,watchFolders:false,tmdbToken:'test',metadataLanguage:'zh-CN'},service=new LibraryService({database:db,directory,getSettings:()=>prefs,notify(){},authorize(){},fetcher,...options});await service.init();t.after(async()=>{await service.close();db.close();await fs.rm(directory,{recursive:true,force:true});});return {directory,db,prefs,service};}
-function response(url){const u=new URL(url),tv=u.pathname.includes('/tv'),query=u.searchParams.get('query'),id=tv?2:1,title=tv?'Show':'Film',record={id,...(tv?{name:title,original_name:title,first_air_date:'2024-01-01'}:{title,original_title:title,release_date:'2024-01-01'}),runtime:130,overview:'Matched',genres:[],credits:{cast:[],crew:[]},release_dates:{results:[]},content_ratings:{results:[]},poster_path:'/poster.jpg'};return new Response(JSON.stringify(query?{results:[record]}:record));}
+function response(url){const u=new URL(url),tv=u.pathname.includes('/tv'),query=u.searchParams.get('query'),id=tv?2:1,title=tv?'Show':'Feature',record={id,...(tv?{name:title,original_name:title,first_air_date:'2024-01-01'}:{title,original_title:title,release_date:'2024-01-01'}),runtime:130,overview:'Matched',genres:[],credits:{cast:[],crew:[]},release_dates:{results:[]},content_ratings:{results:[]},poster_path:'/poster.jpg'};return new Response(JSON.stringify(query?{results:[record]}:record));}
 
 test('metadata is visible while images and probes are pending; versions and episodes share one lookup and retain file identity',async t=>{
   const images=deferred(),probe=deferred();let searches=0,details=0;
@@ -59,7 +59,7 @@ test('late certification failures cannot mark a newly chosen manual match as bro
 });
 
 test('overlapping manual choices keep the newest choice across versions when the old response arrives last',async t=>{
-  const gate=deferred();let started=false;const {service,db}=await library(t,[movie('a'),movie('b')],async(url,options)=>{const id=Number(new URL(url).pathname.split('/').at(-1));if(id===1){started=true;await waiting(gate,options.signal);}return new Response(JSON.stringify({id,title:'Choice '+id,original_title:'Film',release_date:'2024-01-01',credits:{cast:[],crew:[]},genres:[]}));});
+  const gate=deferred();let started=false;const {service,db}=await library(t,[movie('a'),movie('b')],async(url,options)=>{const id=Number(new URL(url).pathname.split('/').at(-1));if(id===1){started=true;await waiting(gate,options.signal);}return new Response(JSON.stringify({id,title:'Choice '+id,original_title:'Feature',release_date:'2024-01-01',credits:{cast:[],crew:[]},genres:[]}));});
   const old=service.match('a',{tmdbId:1,kind:'movie'});await until(()=>started);await service.match('b',{tmdbId:2,kind:'movie'});gate.resolve();await old;await service.onIdle();assert.ok(db.load().media.every(m=>m.tmdbId===2&&m.title==='Choice 2'));assert.equal(service.status().failed,0);
 });
 

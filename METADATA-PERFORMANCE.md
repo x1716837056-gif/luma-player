@@ -33,3 +33,5 @@
 真实测试的凭据、媒体路径清单、数据库与截图不进入源码。单部影片或小样本的网络时长，不代表用户整个 500 部影片片库已完成计时验收。
 
 接口依据：[TMDB 限流说明](https://developer.themoviedb.org/docs/rate-limiting)、[合并详情请求](https://developer.themoviedb.org/docs/append-to-response)。
+
+识别规则现由 [RECOGNITION.md](RECOGNITION.md) 中的有界回退与别名核验接管。直接可信名称仍为一次搜索 + 一次详情；疑难名称最多四个查询、两个附带别名和翻译的详情，不绕过现有节流。未找到与待确认按算法版本停放，避免每次启动重复搜索。

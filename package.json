@@ -23,6 +23,7 @@
     "chokidar": "6.0.0",
     "fast-xml-parser": "^5.3.0",
     "lucide-react": "^0.468.0",
+    "opencc-js": "1.4.2",
     "p-queue": "10.0.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",

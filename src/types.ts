@@ -59,7 +59,9 @@ export type Media = {
   lastPlayedAt?: number;
   missing?: boolean;
   metadataOrigin?: 'nfo' | 'tmdb' | 'manual';
-  metadataStatus?: 'matched' | 'needs-token' | 'review' | 'failed';
+  metadataStatus?: 'matched' | 'needs-token' | 'review' | 'failed' | 'not-found';
+  recognitionVersion?:number;
+  recognitionMessage?:string;
   metadataError?: string;
   probeError?: string;
   technical?: { container?: string; videoCodec?: string; width?: number; height?: number; hdr: boolean; colorTransfer?: string; durationSeconds: number; tracks: {index: number; type: string; codec?: string; language?: string; title?: string; channels?: number}[]; probedAt: number };

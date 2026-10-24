@@ -1,0 +1,45 @@
+const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs/promises'),os=require('node:os'),path=require('node:path');
+const {parseRelease}=require('../shared/filename.mjs'),{recognitionHints,recognitionState,recognitionGroups,shouldRecognize,RECOGNITION_VERSION}=require('../shared/recognition.mjs'),{recognize}=require('../electron/recognition.cjs'),{scanFolder}=require('../electron/library.cjs'),{cacheArtwork}=require('../electron/metadata.cjs');
+const film=(file,extra={})=>({id:'fixture',path:'C:/Movies/'+file,title:parseRelease(file).title,year:parseRelease(file).year,kind:parseRelease(file).kind,...extra});
+test('Chinese release names keep bracketed titles, full-width years, bilingual names, Chinese season numbers and numerical film titles',()=>{
+  for(const name of ['【盗梦空间】【2010】【4K】.mkv','《盗梦空间》（2010）国语中字.mkv','盗梦空间2010国粤双语.mkv']){const m=parseRelease(name);assert.equal(m.title,'盗梦空间');assert.equal(m.year,2010);}
+  const mixed=parseRelease('地心引力[4KHDR.CN]Gravity.2013.2160p.mkv');assert.equal(mixed.title,'地心引力');assert.equal(mixed.originalTitle,'Gravity');const tv=parseRelease('黑暗荣耀.第一季.第十二集.mkv');assert.equal(tv.season,1);assert.equal(tv.episodeNumber,12);assert.equal(tv.title,'黑暗荣耀');assert.equal(parseRelease('The.Glory.S01.Part.1.KOREAN.2160p.folder').title,'The Glory');assert.equal(parseRelease('1917.2019.mkv').title,'1917');assert.equal(parseRelease('阿Q正传.1981.mkv').title,'阿Q正传');
+  const a=parseRelease('Test.2024.mkv');a.title='mutated';assert.equal(parseRelease('Test.2024.mkv').title,'Test');
+});
+test('generic filenames and abbreviated release codes use useful folders while conflicting folders cannot override a meaningful film name',()=>{
+  const generic=recognitionHints(film('盗梦空间（2010）/4K/正片.mkv'));assert.equal(generic.title,'盗梦空间');assert.equal(generic.year,2010);const abbreviated=recognitionHints(film('客人/【资源www.example.test】abcd.2016.BD1080p.mkv'));assert.equal(abbreviated.title,'客人');assert.equal(abbreviated.year,2016);
+  const conflict=recognitionHints(film('沙丘（2021）/降临.2016.mkv'));assert.equal(conflict.parentConflict,true);assert.ok(!conflict.queries.includes('沙丘'));
+});
+test('simplified/traditional and AND versus ampersand match without additional requests',async()=>{
+  for(const [name,title,original,year] of [['驚奇隊長.2019.mkv','惊奇队长','Captain Marvel',2019],['Deadpool.And.Wolverine.2024.mkv','死侍与金刚狼','Deadpool & Wolverine',2024]]){let calls=0;const result=await recognize(film(name),'test','zh-CN',async()=>{calls++;return new Response(JSON.stringify({results:[{id:1,title,original_title:original,release_date:year+'-01-01'}]}));});assert.equal(result.candidate.tmdbId,1);assert.equal(calls,1);}
+});
+test('regional aliases are verified with bounded appended details instead of accepting an unrelated search result',async()=>{
+  let calls=0,detailsCalls=0;const result=await recognize(film('神鬼認證.2002.mkv'),'test','zh-CN',async url=>{calls++;const u=new URL(url);if(u.pathname.includes('/search/'))return new Response(JSON.stringify({results:[{id:1,title:'谍影重重',original_title:'The Bourne Identity',release_date:'2002-01-01'}]}));detailsCalls++;assert.ok(u.searchParams.get('append_to_response').includes('alternative_titles'));return new Response(JSON.stringify({id:1,title:'谍影重重',original_title:'The Bourne Identity',release_date:'2002-01-01',credits:{cast:[],crew:[]},alternative_titles:{titles:[{title:'神鬼認證'}]}}));});assert.equal(result.candidate.tmdbId,1);assert.equal(result.details.metadataOrigin,'tmdb');assert.ok(calls<=3);assert.equal(detailsCalls,1);
+});
+test('same-name ambiguity and conflicting years remain manual; an earlier regional alias prevents a lower-ranked literal-title false match',async()=>{
+  const ambiguous=await recognize(film('Arrival.2016.mkv'),'test','zh-CN',async()=>new Response(JSON.stringify({results:[1,2].map(id=>({id,title:'Arrival',release_date:'2016-01-01'}))})));assert.equal(ambiguous.state,'review');
+  const year=await recognize(film('Arrival.2016.mkv'),'test','zh-CN',async()=>new Response(JSON.stringify({results:[{id:1,title:'Arrival',release_date:'1996-01-01'}]})));assert.equal(year.state,'review');
+  const alias=await recognize(film('Burning.2018.mkv'),'test','zh-CN',async url=>new Response(JSON.stringify(new URL(url).pathname.includes('/search/')?{results:[{id:1,title:'燃烧',original_title:'버닝',release_date:'2018-01-01'},{id:2,title:'Burning',release_date:'2018-01-01'}]}:{id:1,title:'燃烧',original_title:'버닝',release_date:'2018-01-01',alternative_titles:{titles:[{title:'Burning'}]},credits:{cast:[],crew:[]}})));assert.equal(alias.state,'review');
+});
+test('later TV seasons can refer to an earlier premiere year, while multiple verified shows remain ambiguous',async()=>{
+  const item=film('The.Show.S04E01.2024.mkv',{kind:'tv',seriesTitle:'The Show',season:4});const result=await recognize(item,'test','zh-CN',async()=>new Response(JSON.stringify({results:[{id:1,name:'The Show',original_name:'The Show',first_air_date:'2019-01-01'}]})));assert.equal(result.candidate.tmdbId,1);
+});
+test('exhausted lookups are bounded, parked separately and retried on explicit request or an algorithm update',async()=>{
+  let calls=0;const result=await recognize(film('Movie Collection/UnknownFeature.2024.mkv'),'test','zh-CN',async()=>{calls++;return new Response('{"results":[]}');});assert.equal(result.state,'not-found');assert.ok(calls<=4);assert.equal(shouldRecognize({metadataStatus:'review'}),true);assert.equal(shouldRecognize({metadataStatus:'not-found',recognitionVersion:RECOGNITION_VERSION}),false);assert.equal(shouldRecognize({metadataStatus:'not-found',recognitionVersion:RECOGNITION_VERSION},true),true);assert.equal(recognitionState({metadataStatus:'failed'}),'failed');assert.equal(recognitionState({metadataOrigin:'nfo'}),'matched');
+});
+test('library grouping separates unmatched works while versions of a trusted work and its viewing history stay together',()=>{
+  const entries=[{media:{id:'known',tmdbId:1},movie:{media:[{id:'known',tmdbId:1},{id:'new-version',progress:.4}]}},{media:{id:'failed'},movie:{media:[{id:'failed',metadataStatus:'failed'}]}},{media:{id:'missing'},movie:{media:[{id:'missing',metadataStatus:'not-found'}]}}],state=recognitionGroups(entries);assert.ok(state.matched.has('new-version'));assert.equal(state.pending.size,2);assert.equal(state.pending.get('failed'),'failed');assert.equal(state.pending.get('missing'),'not-found');assert.equal(recognitionGroups(entries,true).pending.size,0);
+});
+test('local imports use Chinese parent names without altering NFO priority or original file bytes',async t=>{
+  const root=await fs.mkdtemp(path.join(os.tmpdir(),'luma-name-fixture-'));t.after(()=>fs.rm(root,{recursive:true,force:true}));const dir=path.join(root,'盗梦空间（2010）');await fs.mkdir(dir);const file=path.join(dir,'正片.mkv');await fs.writeFile(file,'read-only test bytes');const before=await fs.stat(file),first=await scanFolder(root);assert.equal(first.media[0].title,'盗梦空间');assert.equal(first.media[0].year,2010);await fs.writeFile(path.join(dir,'movie.nfo'),'<movie><title>手动 NFO 标题</title><year>2011</year></movie>');const second=await scanFolder(root);assert.equal(second.media[0].title,'手动 NFO 标题');assert.equal(second.media[0].metadataOrigin,'nfo');assert.equal((await fs.stat(file)).mtimeMs,before.mtimeMs);
+});
+test('concurrent artwork writes for a shared URL all return the same usable local cache file',async t=>{
+  const dir=await fs.mkdtemp(path.join(os.tmpdir(),'luma-shared-picture-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));const images=await Promise.all(Array.from({length:24},()=>cacheArtwork({poster:'https://image.tmdb.org/t/p/w500/shared.jpg'},dir,async()=>new Response(new Uint8Array([255,216,255,217])))));assert.ok(images.every(m=>m.poster.startsWith('luma-media:')));assert.equal(new Set(images.map(m=>m.poster)).size,1);assert.equal((await fs.readdir(dir)).length,1);
+});
+
+test('translated English show titles are verified against TMDB translations, including TV alias result shape',async()=>{
+  const result=await recognize(film('Shogun.S01E01.mkv',{kind:'tv'}),'test','zh-CN',async url=>{const u=new URL(url);if(u.pathname.includes('/search/'))return new Response(JSON.stringify({results:[{id:1,name:'将军',original_name:'将軍',first_air_date:'2024-01-01'}]}));assert.ok(u.searchParams.get('append_to_response').includes('translations'));return new Response(JSON.stringify({id:1,name:'将军',original_name:'将軍',first_air_date:'2024-01-01',alternative_titles:{results:[]},translations:{translations:[{data:{name:'Shogun'}}]},credits:{cast:[],crew:[]}}));});assert.equal(result.candidate.tmdbId,1);
+});
+test('a dated Chinese movie folder can rescue a non-generic but unsearchable Chinese filename',async()=>{
+  const result=await recognize(film('盗梦空间（2010）/高清精选.2010.mkv'),'test','zh-CN',async url=>new Response(JSON.stringify({results:new URL(url).searchParams.get('query')==='盗梦空间'?[{id:1,title:'盗梦空间',original_title:'Inception',release_date:'2010-01-01'}]:[]})));assert.equal(result.candidate.tmdbId,1);
+});

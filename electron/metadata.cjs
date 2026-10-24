@@ -4,6 +4,11 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const {tmdbRequest} = require('../shared/tmdb-auth.mjs');
 const {extractCertification} = require('../shared/catalog.mjs');
+const artworkWrites=new Map();
+async function writeArtwork(filename,data){
+  if(artworkWrites.has(filename))return artworkWrites.get(filename);
+  const work=(async()=>{let temporary;try{try{await fs.access(filename);return;}catch{}temporary=filename+'.'+crypto.randomUUID()+'.tmp';await fs.writeFile(temporary,data);await fs.rename(temporary,filename);temporary=undefined;}finally{if(temporary)await fs.unlink(temporary).catch(()=>{});}})().finally(()=>artworkWrites.delete(filename));artworkWrites.set(filename,work);return work;
+}
 function client(token, fetcher=fetch, signal) {
   if (!token?.trim()) throw new Error('请先在设置中填写 TMDB API Key 或读取令牌。');
   return new TMDB(token.trim(),{fetch:async (url,options)=>{
@@ -60,9 +65,10 @@ async function resolveBrowseArtwork(media,token,language='zh-CN',fetcher=fetch,s
   const api=client(token,fetcher,signal),data=await(media.kind==='tv'?api.tvShows.details(media.tmdbId,['credits'],language):api.movies.details(media.tmdbId,['credits'],language));
   return browseArtwork(data);
 }
-async function resolveMetadata(media,candidate,token,language='zh-CN',fetcher=fetch,signal) {
+async function resolveMetadata(media,candidate,token,language='zh-CN',fetcher=fetch,signal,includeAliases=false) {
   const api=client(token,fetcher,signal);
-  const r=await (candidate.kind==='tv'?api.tvShows.details(candidate.tmdbId,['credits','content_ratings'],language):api.movies.details(candidate.tmdbId,['credits','release_dates'],language));
+  const aliases=includeAliases?['alternative_titles','translations']:[];
+  const r=await (candidate.kind==='tv'?api.tvShows.details(candidate.tmdbId,['credits','content_ratings',...aliases],language):api.movies.details(candidate.tmdbId,['credits','release_dates',...aliases],language));
   const next=basic(media,r,candidate.kind);
   next.genre=(r.genres||[]).map(g=>g.name);
   Object.assign(next,extractCertification(r,candidate.kind,language),{certificationCheckedAt:Date.now(),certificationError:''});
@@ -72,6 +78,7 @@ async function resolveMetadata(media,candidate,token,language='zh-CN',fetcher=fe
   Object.assign(next,browseArtwork(r));
   if (candidate.kind==='movie' && r.runtime && !media.technical?.durationSeconds) next.duration=r.runtime;
   next.metadataStatus='matched'; next.metadataOrigin='tmdb'; next.metadataError='';
+  if(includeAliases)next.matchingAliases=[...(r.alternative_titles?.titles||r.alternative_titles?.results||[]).map(item=>item.title),...(r.translations?.translations||[]).map(item=>item.data?.title||item.data?.name)].filter(Boolean);
   return next;
 }
 async function cacheArtwork(media,directory,fetcher=fetch,signal) {
@@ -82,7 +89,6 @@ async function cacheArtwork(media,directory,fetcher=fetch,signal) {
     if(typeof url!=='string'||!url.startsWith('https://image.tmdb.org/t/p/'))return url;
     if(pending.has(url))return pending.get(url);
     const work=(async()=>{
-    let temporary;
     try {
       const filename=path.join(directory,crypto.createHash('sha256').update(url).digest('hex')+'.jpg');
       try { await fs.access(filename); } catch {
@@ -90,11 +96,10 @@ async function cacheArtwork(media,directory,fetcher=fetch,signal) {
         if (!response.ok) return url;
         const data=Buffer.from(await response.arrayBuffer());
         if (!data.length||data.length>15*1024*1024) return url;
-        temporary=filename+'.'+crypto.randomUUID()+'.tmp';await fs.writeFile(temporary,data);await fs.rename(temporary,filename);temporary=undefined;
+        await writeArtwork(filename,data);
       }
       return `luma-media://local/${encodeURIComponent(filename)}`;
     } catch { return url; /* Online metadata remains usable if artwork caching fails. */ }
-    finally{if(temporary)await fs.unlink(temporary).catch(()=>{});}
     })();pending.set(url,work);return work;
   }
   let index=0;await Promise.all(Array.from({length:Math.min(4,assets.length)},async()=>{while(index<assets.length){const [target,key]=assets[index++];if(target[key])target[key]=await cache(target[key]);}}));

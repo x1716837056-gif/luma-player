@@ -1,9 +1,11 @@
 const path=require('node:path');
 const {probeMedia}=require('./probe.cjs');
 const {MetadataNetwork}=require('./metadata-network.cjs');
-const {searchMetadata,resolveMetadata,resolveBrowseArtwork,cacheArtwork,confidence,refreshCertification}=require('./metadata.cjs');
+const {searchMetadata,resolveMetadata,resolveBrowseArtwork,cacheArtwork,refreshCertification}=require('./metadata.cjs');
 const {groupMovies,movieFor}=require('../shared/movies.mjs');
 const {groupSeries,seriesFor}=require('../shared/series.mjs');
+const {recognitionHints,shouldRecognize,RECOGNITION_VERSION}=require('../shared/recognition.mjs');
+const {recognize}=require('./recognition.cjs');
 const fields=['kind','title','originalTitle','year','genre','rating','description','poster','backdrop','tmdbId','certification','certificationRegion','minimumAge','certificationCheckedAt','certificationError','cast','director','directors','people','collection','browseArtworkCheckedAt','browseArtworkError','metadataStatus','metadataOrigin','metadataError','seriesTitle','seriesOriginalTitle','seriesYear','seriesDescription'];
 const pick=value=>Object.fromEntries(fields.filter(key=>key in value).map(key=>[key,value[key]]));
 const emptyStats=()=>({running:false,completed:0,matched:0,review:0,failed:0,total:0,queued:0});
@@ -40,7 +42,7 @@ class MetadataJobs{
   needsArtwork(media){return Boolean(media?.tmdbId&&[media.poster,media.backdrop,...(media.people||[]).map(p=>p.photo),media.collection?.poster,media.collection?.backdrop].some(url=>typeof url==='string'&&url.startsWith('https://image.tmdb.org/t/p/')));}
   metadata(ids,value,{manual=false}={}){
     for(const id of ids){const current=this.current(id);if(!current||(!manual&&!this.eligible(current)))continue;
-      const patch=pick(value);if(manual)patch.metadataOrigin='manual';
+      const patch={...pick(value),recognitionMessage:'',recognitionVersion:RECOGNITION_VERSION};if(manual)patch.metadataOrigin='manual';
       // A series shares show metadata, while runtime, season/episode identity and file technical data remain independent.
       if(value.kind==='movie'&&value.duration&&!current.technical?.durationSeconds)patch.duration=value.duration;
       this.service.stage(id,patch);
@@ -65,6 +67,7 @@ class MetadataJobs{
   }
   enqueue(items,force=false){
     const run=this.begin(force),prefs={...this.service.getSettings()},wanted=new Set(items.map(m=>m.id)),library=this.service.library?.media||[];
+    for(const item of items)if(this.eligible(item)&&shouldRecognize(item,force)){const hint=recognitionHints(item),patch={title:hint.title,originalTitle:hint.originalTitle,year:hint.year,kind:hint.kind};if(hint.kind==='tv')Object.assign(patch,{seriesTitle:hint.title,seriesOriginalTitle:hint.originalTitle,seriesYear:hint.year,season:hint.season,episodeNumber:hint.episodeNumber});if(Object.entries(patch).some(([key,value])=>item[key]!==value))this.service.stage(item.id,patch);}
     const sources=new Map((this.service.library?.sources||[]).map(s=>[s.id,s]));
     for(const media of items)if(!media.missing&&!media.remote&&!media.technical){
       const queue=sources.get(media.sourceId)?.type==='nas'?this.nasQueue:this.probeQueue;
@@ -74,7 +77,7 @@ class MetadataJobs{
       const series=groupSeries(library),episodes=new Set(series.flatMap(s=>s.media.map(m=>m.id))),groups=[...series,...groupMovies(library.filter(m=>!episodes.has(m.id)))];
       for(const group of groups){
         if(!group.media.some(m=>wanted.has(m.id)&&!m.missing))continue;
-        const pending=group.media.filter(m=>this.eligible(m)),ratings=group.media.filter(m=>!m.missing&&m.tmdbId&&!m.certificationCheckedAt);
+        const donorAvailable=group.media.some(m=>m.tmdbId&&m.metadataOrigin),pending=group.media.filter(m=>this.eligible(m)&&(donorAvailable||shouldRecognize(m,force))),ratings=group.media.filter(m=>!m.missing&&m.tmdbId&&!m.certificationCheckedAt);
         if(!pending.length&&!ratings.length){const art=group.media.find(m=>!m.missing&&this.needsArtwork(m));if(art)this.imagesFor(group.media.map(m=>m.id),art,run);continue;}
         const ids=group.media.map(m=>m.id),representative=pending[0]||ratings[0];
         this.track('metadata',group.id,this.queue,async signal=>{
@@ -84,10 +87,10 @@ class MetadataJobs{
             const donor=members.find(m=>m.tmdbId&&m.metadataOrigin),current=this.current(representative.id)||unmatched[0];let details;
             if(donor)details={...donor,duration:undefined};
             else{
-              const candidates=await searchMetadata(current,current.seriesTitle||current.title,current.kind,prefs.tmdbToken,prefs.metadataLanguage,this.fetch,signal),ranked=candidates.map(item=>({item,score:confidence(current,item)})).sort((a,b)=>b.score-a.score);
+              const result=await recognize(current,prefs.tmdbToken,prefs.metadataLanguage,this.fetch,signal);
               signal.throwIfAborted();if(!samePrefs())return;
-              if(!ranked[0]||ranked[0].score<.95||ranked[1]?.score>=.95){for(const m of unmatched)if(this.eligible(this.current(m.id)))this.service.stage(m.id,{metadataStatus:'review'});if(run.run===this.run)this.stats.review++;return;}
-              details=await resolveMetadata(current,ranked[0].item,prefs.tmdbToken,prefs.metadataLanguage,this.fetch,signal);
+              if(!result.candidate){for(const m of unmatched)if(this.eligible(this.current(m.id)))this.service.stage(m.id,{metadataStatus:result.state,recognitionMessage:result.message,recognitionVersion:RECOGNITION_VERSION,metadataError:''});if(run.run===this.run)this.stats.review++;return;}
+              details=result.details||await resolveMetadata(current,result.candidate,prefs.tmdbToken,prefs.metadataLanguage,this.fetch,signal);
             }
             signal.throwIfAborted();if(!samePrefs())return;
             this.metadata(ids,details);if(run.run===this.run)this.stats.matched++;this.imagesFor(ids,details,run);

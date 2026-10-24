@@ -1,6 +1,7 @@
 const path=require('node:path');
 const { scanFolder }=require('./library.cjs');
 const {MetadataJobs}=require('./metadata-jobs.cjs');
+const {shouldRecognize}=require('../shared/recognition.mjs');
 const {seriesFor,episodeIdentity}=require('../shared/series.mjs');
 const {movieFor,groupMovies}=require('../shared/movies.mjs');
 const {applyPersonal,itemVersions,personalFields}=require('../shared/user-library.mjs');
@@ -89,6 +90,7 @@ class LibraryService {
   match(id,candidate){return this.tasks.match(id,candidate);}
   search(media,query,kind){return this.tasks.search(media,query,kind);}
   needsArtwork(media){return this.tasks.needsArtwork(media);}
+  needsRecognition(media){return shouldRecognize(media);}
   onIdle(){return this.tasks.onIdle();}
   async syncWatchers() {
     if(!this.queue)return;

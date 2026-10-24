@@ -5,6 +5,7 @@
 | 项目 | 用途 | 仓库 / 许可证 |
 | --- | --- | --- |
 | @ctrl/video-filename-parser | 前后端共用片名、年份、季集与发行信息解析 | https://github.com/scttcper/video-filename-parser · MIT |
+| opencc-js 1.4.2 | 中文繁简规范化，仅后台识别时延迟加载 | https://github.com/nk2028/opencc-js · MIT AND Apache-2.0；保留 LICENSE、LICENSES/Apache-2.0.txt 与 THIRD_PARTY_LICENSES.md |
 | tmdb-ts | 电影、电视剧搜索和详情、演职员数据 | https://github.com/blakejoy/tmdb-ts · MIT |
 | p-queue | 后台任务并发、请求节流和取消 | https://github.com/sindresorhus/p-queue · MIT |
 | chokidar | 本地目录监听、网络目录轮询 | https://github.com/paulmillr/chokidar · MIT |

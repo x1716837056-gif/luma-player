@@ -1,6 +1,7 @@
 const http=require('node:http'),crypto=require('node:crypto'),{Readable}=require('node:stream');
 const {parseRelease}=require('../shared/filename.mjs');
 const {episodeIdentity}=require('../shared/series.mjs');
+const {recognitionHints}=require('../shared/recognition.mjs');
 const video=/\.(mp4|mkv|webm|mov|avi|m4v|ts|m2ts|wmv|flv)$/i;
 const stable=s=>crypto.createHash('sha256').update(s).digest('hex').slice(0,20);
 function cleanPath(value){if(typeof value!=='string'||value.length>4096||/[\x00-\x1f\\]/.test(value))throw Error('网盘目录无效。');const p=value.startsWith('/')?value:'/'+value;if(p.split('/').some(s=>s==='.'||s==='..'))throw Error('网盘目录无效。');return p.replace(/\/+$/,'')||'/';}
@@ -46,7 +47,7 @@ class CloudLibrary{
               const parsed=parseRelease(f.name),logical=`cloud://${id}${f.path}`,m={id:stable(logical),...parsed,genre:[],duration:0,rating:'',certification:'',poster:'',backdrop:'',description:'尚未匹配影片资料。',sourceId:source.id,path:logical,remote:{accountId:id,path:f.path},fileSize:f.size,modifiedAt:f.modifiedAt,quality:/2160|4k/i.test(f.name)?'4K':/1080/i.test(f.name)?'1080P':'网盘',imported:true,addedAt:Date.now()};
               const disc=f.path.match(/^(.*)\/BDMV\/STREAM\/[^/]+$/i);
               if(disc){const title=parseRelease(disc[1].split('/').at(-1)||account.label);Object.assign(m,title,{kind:'movie',editionLabel:'蓝光片段 · '+f.name,description:'蓝光原盘的视频片段；当前不支持网盘原盘菜单及完整播放列表导航。'});m.remote.discRoot=disc[1]||'/';}
-              const i=!disc&&episodeIdentity(m);if(i)Object.assign(m,{kind:'tv',title:i.title,originalTitle:i.originalTitle,seriesTitle:i.title,seriesOriginalTitle:i.originalTitle,seriesYear:i.year,year:m.year||i.year,season:i.season??undefined,episodeNumber:i.number??undefined});media.push(m);
+              const i=!disc&&episodeIdentity(m);if(i)Object.assign(m,{kind:'tv',title:i.title,originalTitle:i.originalTitle,seriesTitle:i.title,seriesOriginalTitle:i.originalTitle,seriesYear:i.year,year:m.year||i.year,season:i.season??undefined,episodeNumber:i.number??undefined});const hint=recognitionHints(m);Object.assign(m,{title:hint.title,originalTitle:hint.originalTitle,year:hint.year,kind:hint.kind});media.push(m);
             }
           }
           files=media.length;entries+=result.count;report('scanning');

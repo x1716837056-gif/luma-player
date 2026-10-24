@@ -71,7 +71,7 @@ function wireIpc() {
     // Keep directory enumeration, NAS polling, probing and scraping off the first-frame path.
     backgroundTimer=setTimeout(()=>{
       backgroundWork=service.syncWatchers().catch(error=>console.error('Folder watching could not start:',error.message)).then(()=>{
-        if(!closing)service.enqueue((service.library?.media||[]).filter(m=>m.path && !m.missing && (!m.technical || (settings.autoScrape && settings.tmdbToken && ((!m.metadataOrigin && !m.tmdbId && m.metadataStatus!=='review') || (m.tmdbId && !m.certificationCheckedAt)||service.needsArtwork(m))))));
+        if(!closing)service.enqueue((service.library?.media||[]).filter(m=>m.path && !m.missing && (!m.technical || (settings.autoScrape && settings.tmdbToken && ((!m.metadataOrigin && !m.tmdbId && service.needsRecognition(m)) || (m.tmdbId && !m.certificationCheckedAt)||service.needsArtwork(m))))));
       });
     },1000);
   });
@@ -108,7 +108,7 @@ function wireIpc() {
     await writeJson('settings.json',persisted);settings=next;
     if(settings.watchFolders!==previous.watchFolders)await service.syncWatchers();
     if(settings.tmdbToken!==previous.tmdbToken||settings.metadataLanguage!==previous.metadataLanguage||(!settings.autoScrape&&previous.autoScrape)){service.cancel();service.enqueue((service.library?.media||[]).filter(m=>m.imported&&!m.remote&&!m.technical&&!m.missing));}
-    if(settings.autoScrape && settings.tmdbToken && (settings.tmdbToken!==previous.tmdbToken || settings.autoScrape!==previous.autoScrape || settings.metadataLanguage!==previous.metadataLanguage))service.enqueue((service.library?.media||[]).filter(m=>m.imported && ((!m.metadataOrigin && !m.tmdbId) || (m.tmdbId && !m.certificationCheckedAt))));
+    if(settings.autoScrape && settings.tmdbToken && (settings.tmdbToken!==previous.tmdbToken || settings.autoScrape!==previous.autoScrape || settings.metadataLanguage!==previous.metadataLanguage))service.enqueue((service.library?.media||[]).filter(m=>m.imported && ((!m.metadataOrigin && !m.tmdbId) || (m.tmdbId && !m.certificationCheckedAt))),true);
   });
   ipcMain.handle('source:select',async ()=>{
     const result=await dialog.showOpenDialog(window,{title:'选择影片文件夹',properties:['openDirectory']});
