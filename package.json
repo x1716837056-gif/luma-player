@@ -53,7 +53,10 @@
       "package.json"
     ],
     "win": {
-      "target": ["nsis", "zip"],
+      "target": [
+        "nsis",
+        "zip"
+      ],
       "signExecutable": false,
       "icon": "public/luma.ico"
     },
@@ -70,12 +73,59 @@
     "asar": true,
     "npmRebuild": false,
     "extraResources": [
-      { "from": "electron/player", "to": "player", "filter": ["*.lua"] },
-      { "from": "tools/mpv", "to": "tools/mpv", "filter": ["mpv.exe", "d3dcompiler_43.dll", "LICENSE.GPL", "Copyright"] },
-      { "from": "tools/ffmpeg/ffmpeg-master-latest-win64-lgpl/bin", "to": "tools/ffmpeg/bin", "filter": ["ffprobe.exe"] },
-      { "from": "tools/ffmpeg/ffmpeg-master-latest-win64-lgpl/LICENSE.txt", "to": "tools/ffmpeg/LICENSE.txt" },
-      { "from": "tools/mpv-build.json", "to": "tools/mpv-build.json" },
-      { "from": "tools/ffmpeg-build.json", "to": "tools/ffmpeg-build.json" }
+      {
+        "from": "electron/player",
+        "to": "player",
+        "filter": [
+          "*.lua"
+        ]
+      },
+      {
+        "from": "tools/mpv",
+        "to": "tools/mpv",
+        "filter": [
+          "mpv.exe",
+          "d3dcompiler_43.dll",
+          "LICENSE.GPL",
+          "Copyright"
+        ]
+      },
+      {
+        "from": "tools/ffmpeg/ffmpeg-master-latest-win64-lgpl/bin",
+        "to": "tools/ffmpeg/bin",
+        "filter": [
+          "ffprobe.exe"
+        ]
+      },
+      {
+        "from": "tools/ffmpeg/ffmpeg-master-latest-win64-lgpl/LICENSE.txt",
+        "to": "tools/ffmpeg/LICENSE.txt"
+      },
+      {
+        "from": "tools/mpv-build.json",
+        "to": "tools/mpv-build.json"
+      },
+      {
+        "from": "tools/ffmpeg-build.json",
+        "to": "tools/ffmpeg-build.json"
+      },
+      {
+        "from": "tools/openlist",
+        "to": "tools/openlist",
+        "filter": [
+          "openlist.exe",
+          "LICENSE",
+          "SOURCE.txt"
+        ]
+      },
+      {
+        "from": "tools/openlist-build.json",
+        "to": "tools/openlist-build.json"
+      }
+    ],
+    "asarUnpack": [
+      "electron/core-host.cjs",
+      "electron/smb-connect.ps1"
     ]
   }
 }

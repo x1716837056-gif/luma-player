@@ -1,0 +1,8 @@
+{
+  "version": "v4.2.8",
+  "name": "openlist-windows-amd64.zip",
+  "browser_download_url": "https://github.com/OpenListTeam/OpenList/releases/download/v4.2.8/openlist-windows-amd64.zip",
+  "digest": "sha256:f9eac1b242fc2ce0ceff419c686cd7b8a60d69ceb11d92d25f839d7613e44e02",
+  "source": "https://github.com/OpenListTeam/OpenList/tree/v4.2.8",
+  "license": "AGPL-3.0"
+}

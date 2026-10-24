@@ -14,6 +14,12 @@ const { normalizeColorMapping } = require('./color-mapping.cjs');
 const {EpisodePlayback}=require('./episode-playback.cjs');
 const {DuplicateScanner}=require('./duplicates.cjs');
 const {shouldRestart}=require('../shared/movies.mjs');
+const {SourceVault}=require('./source-vault.cjs');
+const {OpenListCore}=require('./openlist-core.cjs');
+const {CloudLibrary}=require('./cloud-library.cjs');
+const {CloudAuth}=require('./cloud-auth.cjs');
+const {SmbConnections}=require('./smb.cjs');
+let vault,cloudCore,cloud,cloudAuth,smb,vaultError;
 
 protocol.registerSchemesAsPrivileged([{ scheme: 'luma-media', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true } }]);
 let window;
@@ -35,7 +41,7 @@ const jsonPath = name => path.join(app.getPath('userData'), name);
 
 function authorizeMedia(media) {
   for (const item of media || []) {
-    if (typeof item.path === 'string') allowedFiles.add(normalize(item.path));
+    if (!item.remote && typeof item.path === 'string') allowedFiles.add(normalize(item.path));
     for (const url of [item.poster,item.backdrop,...(item.people||[]).map(p=>p.photo),item.collection?.poster,item.collection?.backdrop]) if (typeof url === 'string' && url.startsWith('luma-media://local/')) {
       try { allowedFiles.add(normalize(decodeURIComponent(new URL(url).pathname.slice(1)))); } catch { /* Invalid URLs are ignored. */ }
     }
@@ -73,7 +79,7 @@ function wireIpc() {
   ipcMain.handle('library:load',()=>service.library);
   ipcMain.handle('library:save',(_,next)=>{
     if(!next || !Array.isArray(next.media) || !Array.isArray(next.sources))throw new Error('影音库格式无效。');
-    for(const item of next.media) if(item.path && !allowedFiles.has(normalize(item.path)))throw new Error('请先扫描来源。');
+    for(const item of next.media)if(item.remote?!service.library?.media.some(m=>m.id===item.id&&m.remote?.accountId===item.remote.accountId&&m.remote?.path===item.remote.path):item.path&&!allowedFiles.has(normalize(item.path)))throw new Error('请先扫描来源。');
     service.replace(next);
   });
   ipcMain.handle('library:patch',(_,id,patch)=>{
@@ -108,7 +114,14 @@ function wireIpc() {
     const result=await dialog.showOpenDialog(window,{title:'选择影片文件夹',properties:['openDirectory']});
     return result.canceled?null:result.filePaths[0];
   });
-  ipcMain.handle('source:scan',(_,folder,type)=>service.scan(folder,type==='nas'?'nas':'local'));
+  ipcMain.handle('source:scan',(_,folder,type)=>service.scan(folder,type==='cloud'?'cloud':type==='nas'?'nas':'local'));
+  ipcMain.handle('source:smb',async(_,input)=>service.scan(await smb.open(input),'nas'));
+  ipcMain.handle('cloud:accounts',()=>{if(vaultError)throw Error(vaultError);return vault.accounts();});
+  ipcMain.handle('cloud:login',(_,provider,id)=>{if(vaultError)throw Error(vaultError);return cloudAuth.login(provider,id);});
+  ipcMain.handle('cloud:cancel',()=>cloudAuth.cancel());
+  ipcMain.handle('cloud:list',(_,id,folder)=>cloud.list(id,folder));
+  ipcMain.handle('cloud:add',(_,id,folder)=>{if(!vault.account(id))throw Error('请先登录网盘。');return service.scan('cloud://'+id+String(folder||'/').split('/').map(encodeURIComponent).join('/'),'cloud');});
+  ipcMain.handle('cloud:logout',async(_,id)=>{if(service.library?.media.find(m=>m.id===player.state.mediaId)?.remote?.accountId===id)await player.stop();await vault.remove(id);cloud.disconnect(id);await cloudCore.forget(id).catch(()=>{});for(const m of service.library?.media||[])if(m.remote?.accountId===id)m.missing=true;for(const source of service.library?.sources||[])if(source.accountId===id)source.status='offline';if(service.library)service.save();});
   ipcMain.handle('metadata:search',(_,media,query,kind)=>searchMetadata(media,query,kind,settings.tmdbToken,settings.metadataLanguage,networkFetch));
   ipcMain.handle('metadata:apply',(_,id,candidate)=>service.match(id,candidate));
   ipcMain.handle('tasks:start',()=>{if(!settings.tmdbToken)throw new Error('请先在设置中填写 TMDB API Key / 读取令牌，再开始自动匹配。');return service.enqueue((service.library?.media||[]).filter(m=>m.imported && ((!m.metadataOrigin && !m.tmdbId) || (m.tmdbId && !m.certificationCheckedAt))),true);});
@@ -117,7 +130,7 @@ function wireIpc() {
   ipcMain.handle('player:state',()=>player.state);
   ipcMain.handle('player:control',(_,action,value)=>{if(action==='next')return episodePlayback.advance(false);if(action==='stop')episodePlayback.cancel();return player.control(action,value);});
   ipcMain.handle('media:probe',async (_,id)=>{
-    const media=currentMedia(id);return service.patch(id,await probeMedia(media.path));
+    const media=currentMedia(id);return service.patch(id,await probeMedia(await cloud.input(media)));
   });
   ipcMain.handle('file:reveal',(_,filename)=>{
     if(typeof filename!=='string' || !allowedFiles.has(normalize(filename)))throw new Error('文件未加入影音库。');
@@ -125,8 +138,7 @@ function wireIpc() {
   });
   ipcMain.handle('player:mpv',async (_,media,restart)=>{
     const actual=currentMedia(media.id);
-    if(!actual.path || !allowedFiles.has(normalize(actual.path)))throw new Error('请先导入本地影片。');
-    try { await fsp.access(actual.path,fs.constants.R_OK); } catch { throw new Error('影片文件暂时无法读取，请检查硬盘或 NAS 连接。'); }
+    if(!actual.remote){if(!actual.path||!allowedFiles.has(normalize(actual.path)))throw new Error('请先导入影片。');try{await fsp.access(actual.path,fs.constants.R_OK);}catch{throw new Error('影片文件暂时无法读取，请检查硬盘或 NAS 连接。');}}
     const executable=toolPath('mpv',settings.mpvPath);
     if(!executable)throw new Error('未找到 mpv，请在播放设置中指定 mpv.exe。');
     const replay=restart===true||shouldRestart(actual);
@@ -183,10 +195,14 @@ else {
     settings = {tmdbToken:'',metadataLanguage:'zh-CN',defaultPlayer:'auto',mpvPath:'',autoplay:true,autoScrape:true,watchFolders:true,...await readJson('settings.json', {})};
     if(closing)return;
     if (settings.encryptedToken) { try { settings.tmdbToken = safeStorage.decryptString(Buffer.from(settings.encryptedToken, 'base64')); } catch { settings.tmdbToken = ''; } delete settings.encryptedToken; }
+    vault=new SourceVault(app.getPath('userData'),safeStorage);try{await vault.init();}catch(e){vaultError=e.message;}
+    cloudCore=new OpenListCore({directory:app.getPath('userData'),vault});smb=new SmbConnections(vault);
+    cloud=new CloudLibrary({core:cloudCore,vault,getLibrary:()=>service?.library});
+    cloudAuth=new CloudAuth({parent:()=>window,core:cloudCore,vault,onChange:id=>{notify('cloud:changed',vault.accounts());for(const source of service?.library?.sources||[])if(source.accountId===id)void service.scan(source.path,'cloud').catch(()=>{});}});
     database=openLibraryDatabase(app.getPath('userData'));
-    service=new LibraryService({database,directory:app.getPath('userData'),getSettings:()=>settings,notify,authorize:media=>{allowedFiles.clear();authorizeMedia(media);},fetcher:networkFetch});
+    service=new LibraryService({database,directory:app.getPath('userData'),getSettings:()=>settings,notify,getInput:media=>cloud.input(media),connectSource:folder=>smb.open({path:folder}),authorize:media=>{allowedFiles.clear();authorizeMedia(media);},fetcher:networkFetch});
     authorizeMedia(service.library?.media);
-    await service.init({watchFolders:false});
+    service.remote=cloud;await service.init({watchFolders:false});
     if(closing)return;
     let lastProgress=0;
     let wasPlaying=false;
@@ -197,7 +213,7 @@ else {
       lastProgress=Date.now();
       service.patch(state.mediaId,{progress:Math.min(1,state.position/state.duration),duration:state.duration/60,lastPlayedAt:Date.now(),...(state.ended?{watched:true}:{})});
     });
-    episodePlayback=new EpisodePlayback({player,afterNext:media=>service.patch(media.id,{watched:false,watchedMarkedAt:0,progress:0}),getMedia:()=>service.library?.media||[],getSettings:()=>({...settings,autoplay:!closing&&settings.autoplay!==false}),readable:async media=>{if(!media.path||!allowedFiles.has(normalize(media.path)))throw new Error('片源未授权。');await fsp.access(media.path,fs.constants.R_OK);},notice:message=>notify('player:changed',{...player.state,notice:message})});
+    episodePlayback=new EpisodePlayback({player,prepare:media=>cloud.prepare(media),afterNext:media=>service.patch(media.id,{watched:false,watchedMarkedAt:0,progress:0}),getMedia:()=>service.library?.media||[],getSettings:()=>({...settings,autoplay:!closing&&settings.autoplay!==false}),readable:async media=>{if(media.remote){await cloud.account(media.remote.accountId);return;}if(!media.path||!allowedFiles.has(normalize(media.path)))throw new Error('片源未授权。');await fsp.access(media.path,fs.constants.R_OK);},notice:message=>notify('player:changed',{...player.state,notice:message})});
     protocol.handle('luma-media', serveLocalMedia);
     duplicates=new DuplicateScanner({getMedia:()=>service.library?.media||[],notify:state=>notify('duplicates:changed',state),onHash:(file,hash)=>{if(closing)return;const m=service.library?.media.find(m=>m.id===file.id&&m.path===file.path);if(m)service.patch(m.id,{...hash,fileSize:file.size,modifiedAt:file.mtime,...(m.fileSize!==file.size||m.modifiedAt!==file.mtime?{technical:undefined}:{})});}});
     wireIpc();
@@ -207,8 +223,8 @@ else {
     if(closing)return;event.preventDefault();closing=true;
     clearTimeout(backgroundTimer);
     episodePlayback?.cancel();
-    duplicates?.cancel();
-    Promise.all([player.stop(),backgroundWork.then(()=>service?.close())]).finally(()=>{database?.close();app.quit();});
+    duplicates?.cancel();cloudAuth?.cancel();
+    Promise.allSettled([player.stop(),backgroundWork.then(()=>service?.close())]).then(()=>cloud?.close()).then(()=>cloudCore?.close()).finally(()=>{database?.close();app.quit();});
   });
   app.on('window-all-closed', () => app.quit());
 }

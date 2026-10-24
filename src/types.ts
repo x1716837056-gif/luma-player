@@ -39,6 +39,8 @@ export type Media = {
   fileSize?: number;
   modifiedAt?: number;
   videoUrl?: string;
+  remote?:{accountId:string;path:string};
+  displayPath?:string;
   quality: string;
   favorite?: boolean;
   watched?: boolean;
@@ -67,11 +69,16 @@ export type Source = {
   id: string;
   name: string;
   path: string;
-  type: 'local' | 'nas';
+  type: 'local' | 'nas' | 'cloud';
+  accountId?:string;
+  remotePath?:string;
   status: 'online' | 'offline';
 };
 
 export type Library = { media: Media[]; sources: Source[]; demo: boolean };
+export type CloudProvider='115'|'baidu'|'quark';
+export type CloudAccount={id:string;provider:CloudProvider;label:string;connected?:boolean};
+export type RemoteEntry={name:string;path:string;isDirectory:boolean;size:number;modifiedAt:number};
 export type PersonalPatch=Pick<Partial<Media>,'favorite'|'watchlist'|'personalRating'|'notes'|'collectionName'>;
 export type DuplicateStatus={running:boolean;phase:string;total:number;checked:number;bytesRead:number;bytesTotal:number;groups:{hash:string;size:number;files:{id:string;title:string;path:string;size:number}[]}[];errors:{id?:string;message:string}[]};
 export type ColorMapping = {output:'auto'|'sdr'|'hdr';curve:'auto'|'spline'|'bt.2390'|'bt.2446a'|'st2094-40'|'st2094-10';peakNits:number;dynamicPeak:boolean};
@@ -91,6 +98,13 @@ declare global {
       saveSettings(settings: Settings): Promise<void>;
       selectFolder(): Promise<string | null>;
       scanFolder(path: string, type: Source['type']): Promise<ScanResult>;
+      connectSmb(input:{path:string;username?:string;password?:string;remember?:boolean}):Promise<ScanResult>;
+      cloudAccounts():Promise<CloudAccount[]>;
+      cloudLogin(provider:CloudProvider,id?:string):Promise<CloudAccount>;
+      cancelCloudLogin():Promise<void>;
+      cloudList(id:string,path:string):Promise<RemoteEntry[]>;
+      addCloudFolder(id:string,path:string):Promise<ScanResult>;
+      cloudLogout(id:string):Promise<void>;
       scrape(media: Media, query: string, kind: Media['kind']): Promise<Media[]>;
       playMpv(media: Media,restart?:boolean): Promise<PlayerState>;
       updateMedia(id: string, patch: Partial<Media>): Promise<Media>;

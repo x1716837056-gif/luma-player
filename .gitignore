@@ -24,3 +24,7 @@ verification-local/
 *.log
 settings.json
 Local State
+
+tools/openlist/
+connections.json
+cloud-runtime/

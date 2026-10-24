@@ -6,8 +6,8 @@ const {seriesFor,episodeIdentity}=require('../shared/series.mjs');
 const {movieFor,groupMovies}=require('../shared/movies.mjs');
 const {applyPersonal,itemVersions,personalFields,metadataOnly}=require('../shared/user-library.mjs');
 class LibraryService {
-  constructor({database,directory,getSettings,notify,authorize,fetcher=fetch}) {
-    this.db=database;this.directory=directory;this.getSettings=getSettings;this.notify=notify;this.authorize=authorize;this.fetcher=fetcher;
+  constructor({database,directory,getSettings,notify,authorize,fetcher=fetch,getInput=async media=>media.path,connectSource=async()=>{}}) {
+    this.db=database;this.directory=directory;this.getSettings=getSettings;this.notify=notify;this.authorize=authorize;this.fetcher=fetcher;this.getInput=getInput;this.connectSource=connectSource;
     this.library=database.load();this.watchers=new Map();this.debounce=new Map();this.scans=new Map();
     let hydrated=false;
     for(const media of this.library?.media||[]){const identity=episodeIdentity(media);if(!identity||media.seriesTitle)continue;Object.assign(media,{kind:'tv',seriesTitle:identity.title,seriesOriginalTitle:identity.originalTitle,seriesYear:identity.year,season:media.season??identity.season??undefined,episodeNumber:media.episodeNumber??identity.number??undefined,episode:media.episode||(identity.number!==null?`第 ${identity.season??1} 季 · 第 ${identity.number} 集`:undefined)});if(!media.metadataOrigin&&!media.tmdbId){media.title=identity.title;media.originalTitle=identity.originalTitle;}hydrated=true;}
@@ -38,26 +38,28 @@ class LibraryService {
     this.library=library;this.save();void this.syncWatchers();
   }
   async scan(folder,type) {
-    const key=path.resolve(folder).toLowerCase();
+    const key=String(folder).startsWith('cloud:')?folder:path.resolve(folder).toLowerCase();
     if(this.scans.has(key)) return this.scans.get(key);
     const work=this.performScan(folder,type).catch(error=>{
-      if(this.library){this.library.sources=this.library.sources.map(s=>path.resolve(s.path).toLowerCase()===key?{...s,status:'offline'}:s);this.save();}
+      if(this.library){this.library.sources=this.library.sources.map(s=>(s.type==='cloud'?s.path:path.resolve(s.path).toLowerCase())===key?{...s,status:'offline'}:s);this.save();}
       throw error;
     }).finally(()=>this.scans.delete(key));this.scans.set(key,work);return work;
   }
   async performScan(folder,type) {
-    const result=await scanFolder(folder,type);
+    if(type==='nas')await this.connectSource(folder);
+    const result=type==='cloud'?await this.remote.scan(folder):await scanFolder(folder,type);
     const current=this.library?.demo?null:this.library;
-    const existing=new Map((current?.media||[]).map(m=>[m.path?.toLowerCase(),m]));
-    const found=new Set(result.media.map(m=>m.path.toLowerCase()));
+    const fileKey=value=>value?.startsWith('cloud:')?value:value?.toLowerCase();
+    const existing=new Map((current?.media||[]).map(m=>[fileKey(m.path),m]));
+    const found=new Set(result.media.map(m=>fileKey(m.path)));
     const fresh=result.media.map(m=>{
-      const old=existing.get(m.path.toLowerCase());
+      const old=existing.get(fileKey(m.path));
       return old?{...m,...old,missing:false,videoUrl:m.videoUrl,fileSize:m.fileSize,modifiedAt:m.modifiedAt,
         seriesTitle:old.seriesTitle||m.seriesTitle,seriesOriginalTitle:old.seriesOriginalTitle||m.seriesOriginalTitle,seriesYear:old.seriesYear||m.seriesYear,season:old.season??m.season,episodeNumber:old.episodeNumber??m.episodeNumber,episode:old.episode||m.episode,
         // A changed file needs a fresh probe, but keeps user metadata and viewing history.
         technical:old.fileSize===m.fileSize && old.modifiedAt===m.modifiedAt?old.technical:undefined}:m;
     });
-    const retained=(current?.media||[]).filter(m=>!found.has(m.path?.toLowerCase())).map(m=>m.sourceId===result.source.id?{...m,...(!result.warnings.length?{missing:true}:{})}:m);
+    const retained=(current?.media||[]).filter(m=>!found.has(fileKey(m.path))).map(m=>m.sourceId===result.source.id?{...m,...(!result.warnings.length?{missing:true}:{})}:m);
     this.library={demo:false,media:[...retained,...fresh],sources:[...(current?.sources||[]).filter(s=>s.id!==result.source.id),result.source]};
     const oldIds=new Set((current?.media||[]).map(m=>m.id));
     for(const group of [...groupMovies(this.library.media),...require('../shared/series.mjs').groupSeries(this.library.media)]){
@@ -82,7 +84,7 @@ class LibraryService {
         this.db.job(media.id,'running');
         let current=this.library.media.find(m=>m.id===media.id);if(!current)return;
         if(!current.technical) {
-          try { const probe=await probeMedia(current.path,undefined,signal);if(!signal.aborted)this.patch(current.id,probe); }
+          try { const probe=await probeMedia(await this.getInput(current),undefined,signal);if(!signal.aborted)this.patch(current.id,probe); }
           catch(error) { if(!signal.aborted)this.patch(current.id,{probeError:error.message}); }
         }
         current=this.library.media.find(m=>m.id===media.id);
@@ -164,7 +166,7 @@ class LibraryService {
   async syncWatchers() {
     if(!this.queue)return;
     const chokidar=await import('chokidar');
-    const sources=this.getSettings().watchFolders===false?[]:(this.library?.sources||[]);
+    const sources=this.getSettings().watchFolders===false?[]:(this.library?.sources||[]).filter(s=>s.type!=='cloud');
     for(const [id,watcher] of this.watchers) if(!sources.some(s=>s.id===id)){await watcher.close();this.watchers.delete(id);clearTimeout(this.debounce.get(id));}
     for(const source of sources) {
       if(this.watchers.has(source.id))continue;

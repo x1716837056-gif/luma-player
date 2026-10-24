@@ -11,6 +11,9 @@
 | better-sqlite3 | 本机事务存储、旧 JSON 迁移、任务状态记录 | https://github.com/WiseLibs/better-sqlite3 · MIT |
 | mpv | 独立播放窗口及 Windows named-pipe JSON IPC | https://github.com/mpv-player/mpv · 此处使用的常规构建包含 GPL 组件，以构建与上游许可为准 |
 | FFmpeg / ffprobe | 容器、编码、音轨、字幕、分辨率和 HDR 片源参数探测 | https://github.com/FFmpeg/FFmpeg · 此处 BtbN win64-lgpl 构建随附 LICENSE.txt 为 LGPL v3 |
+| OpenList v4.2.8 | 独立本机进程，115 / 百度 / 夸克的存储连接与读取 | https://github.com/OpenListTeam/OpenList · AGPL-3.0；使用未修改的官方 Windows amd64 二进制 |
+
+OpenList 的固定下载地址、SHA-256 与源码版本见 `tools/openlist-build.json`。随程序资源附带 `tools/openlist/LICENSE` 和 `SOURCE.txt`；对应源码为 https://github.com/OpenListTeam/OpenList/tree/v4.2.8 。Luma 通过本机 API 与独立进程通信，账号授权采用 OpenList 官方授权服务及网盘官方页面；本项目的连接管理与播放器适配代码未复制上游驱动实现。接入与验证范围见 [CLOUD-SOURCES.md](CLOUD-SOURCES.md)。
 
 精确 npm 版本保存在 package-lock.json。运行库的原始下载地址和 GitHub asset SHA-256 分别保存在 tools/mpv-build.json 和 tools/ffmpeg-build.json；本次已核对下载压缩包与该校验值一致。
 

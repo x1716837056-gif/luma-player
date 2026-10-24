@@ -16,7 +16,7 @@ class DuplicateScanner {
   }
   async run(media,signal){
     const seen=new Set(),files=[];
-    for(const m of media){if(!m.path||m.missing)continue;const key=process.platform==='win32'?path.resolve(m.path).toLowerCase():path.resolve(m.path);if(seen.has(key))continue;seen.add(key);files.push(m);}
+    for(const m of media){if(!m.path||m.missing||m.remote)continue;const key=process.platform==='win32'?path.resolve(m.path).toLowerCase():path.resolve(m.path);if(seen.has(key))continue;seen.add(key);files.push(m);}
     this.state.total=files.length;const sizes=new Map();
     for(const m of files){signal.throwIfAborted();try{const info=await fsp.stat(m.path);if(info.isFile()&&info.size>0){const file={id:m.id,title:m.title,path:m.path,size:info.size,mtime:info.mtimeMs};if(!sizes.has(info.size))sizes.set(info.size,[]);sizes.get(info.size).push(file);}}catch{this.state.errors.push({id:m.id,message:'文件暂时无法读取。'});}this.state.checked++;this.emit();}
     this.state.phase='sampling';this.emit(true);const candidates=[];

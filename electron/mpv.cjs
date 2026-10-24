@@ -64,7 +64,7 @@ class MpvPlayer extends EventEmitter {
     });
     await this.command(['set_property','user-data/luma-osc/media',{
       title:media.title,originalTitle:media.originalTitle,year:media.year,description:media.description,
-      director:media.director,cast:media.cast,genre:media.genre,path:media.path,fileSize:media.fileSize,technical:media.technical,
+      director:media.director,cast:media.cast,genre:media.genre,path:media.displayPath||media.path,fileSize:media.fileSize,technical:media.technical,
     }]);
     for(const [i,property] of ['time-pos','duration','pause','track-list','eof-reached'].entries()) await this.command(['observe_property',i+1,property]);
     // A connected IPC pipe alone does not prove the decoder produced video.
@@ -118,7 +118,7 @@ class MpvPlayer extends EventEmitter {
       const serial=this.loadedSerial;this.loading=true;this.loadError=false;
       this.state={active:true,mediaId:media.id,title:media.title,position:0,duration:media.technical?.durationSeconds||media.duration*60||0,paused:false,tracks:[]};this.emit('state',{...this.state});
       try{
-        await this.command(['set_property','user-data/luma-osc/media',media]);
+        await this.command(['set_property','user-data/luma-osc/media',{...media,path:media.displayPath||media.path}]);
         await this.command(['set_property','force-media-title',media.title]);
         await this.command(['set_property','title',`Luma · ${media.title}`]);
         await this.command(['loadfile',media.path,'replace',-1,'start=0,pause=yes']);
