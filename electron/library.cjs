@@ -41,6 +41,8 @@ async function readNfo(videoPath) {
           ...(Number(node.runtime) ? { duration: Number(node.runtime) } : {}),
           ...(Number(node.rating) ? { rating: Number(node.rating).toFixed(1) } : {}),
           ...(text(node.director) ? { director: text(node.director) } : {}),
+          ...(node.director?{directors:values(node.director).map(text).filter(Boolean)}:{}),
+          ...(text(node.set)||text(node.set?.name)?{collection:{name:text(node.set)||text(node.set?.name)}}:{}),
           ...(text(node.mpaa) ? { certification: text(node.mpaa) } : {}),
           ...(node.genre ? { genre: values(node.genre).map(text).filter(Boolean) } : {}),
           ...(node.actor ? { cast: values(node.actor).map(actor => text(actor?.name)).filter(Boolean).slice(0, 8) } : {}),

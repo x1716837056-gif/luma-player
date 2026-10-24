@@ -1,8 +1,8 @@
 const {nextEpisode,episodeIdentity}=require('../shared/series.mjs');
 const label=media=>{const i=episodeIdentity(media);return i?{...media,title:`${i.title}${i.number!==null?` · 第 ${i.season??1} 季 · 第 ${i.number} 集`:''}`}:media;};
 class EpisodePlayback {
-  constructor({player,getMedia,getSettings,readable,notice}){
-    Object.assign(this,{player,getMedia,getSettings,readable,notice});this.generation=0;
+  constructor({player,getMedia,getSettings,readable,notice,afterNext}){
+    Object.assign(this,{player,getMedia,getSettings,readable,notice,afterNext});this.generation=0;
     player.on('ended',()=>{void this.advance(true);});
     player.on('next-requested',()=>{void this.advance(false);});
     player.on('state',state=>{if(!state.active)this.cancel();});
@@ -30,7 +30,7 @@ class EpisodePlayback {
       try{
         await this.readable(next.media);
         if(ticket!==this.generation||!this.player.state.active||this.player.state.mediaId!==id||(automatic&&this.getSettings().autoplay===false))return;
-        await this.player.loadNext(label({...next.media,progress:0}));await this.refresh();
+        await this.player.loadNext(label({...next.media,progress:0}));if(ticket!==this.generation)return;await this.afterNext?.(next.media);await this.refresh();
       }catch(error){if(ticket===this.generation)this.show('无法打开下一集，已停止连播。请检查片源连接。');}
     })();
     this.pending=work;try{return await work;}finally{if(this.pending===work)this.pending=null;}

@@ -21,6 +21,11 @@ test('pending read is cancelled by stop, close or a settings change and duplicat
 test('read failure is reported without starting another file',async()=>{
   const {playback,player,notices}=fixture();playback.readable=async()=>{throw new Error('offline');};await playback.advance(true);assert.equal(player.state.mediaId,'1');assert.equal(notices.length,1);
 });
+
+test('next episode viewing history resets only after a successful load',async()=>{
+  const {playback,player}=fixture();let reset=0;playback.afterNext=()=>{reset++;};player.loadNext=async()=>{throw Error('decoder failure');};await playback.advance(true);assert.equal(reset,0);
+  player.loadNext=async m=>{player.state={active:true,mediaId:m.id};};await playback.advance(true);assert.equal(reset,1);assert.equal(player.state.mediaId,'2');
+});
 test('decoder/load failure retains the last successful episode instead of skipping it or restarting autoplay',async()=>{
   const p=new MpvPlayer();p.child={exitCode:null};p.socket={};p.state={active:true,mediaId:'1',duration:100,position:100,tracks:[]};
   p.command=async command=>{if(command[0]==='loadfile')throw new Error('decoder error');};

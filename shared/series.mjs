@@ -1,4 +1,5 @@
 import {parseRelease} from './filename.mjs';
+import {groupMovies,hasResume} from './movies.mjs';
 const normalize=value=>String(value||'').normalize('NFKC').toLocaleLowerCase().replace(/[^\p{L}\p{N}]/gu,'');
 const seasonNumber=value=>{
   const match=String(value||'').match(/^(?:season[ ._-]*|s)(\d{1,2})$/i)||String(value||'').match(/^第?([一二三四五六七八九十\d]+)季$/);
@@ -48,7 +49,7 @@ export function episodeIdentity(media){
 const available=media=>!media.missing&&(Boolean(media.path)||Boolean(media.videoUrl));
 const completed=media=>Boolean(media.watched)||(media.progress||0)>=.96;
 export function preferredVersion(episode,sourceId){
-  return [...episode.media].sort((a,b)=>Number(available(b))-Number(available(a))||Number(b.sourceId===sourceId)-Number(a.sourceId===sourceId)||(b.lastPlayedAt||0)-(a.lastPlayedAt||0)||a.id.localeCompare(b.id))[0];
+  return [...episode.media].sort((a,b)=>Number(available(b))-Number(available(a))||Number(Boolean(b.preferredVersion))-Number(Boolean(a.preferredVersion))||Number(b.sourceId===sourceId)-Number(a.sourceId===sourceId)||(b.lastPlayedAt||0)-(a.lastPlayedAt||0)||a.id.localeCompare(b.id))[0];
 }
 export function groupSeries(items){
   const records=items.map(media=>({media,identity:episodeIdentity(media)})).filter(r=>r.identity);
@@ -81,7 +82,7 @@ export function groupSeries(items){
 export function seriesFor(items,id,groups=groupSeries(items)){return groups.find(group=>group.media.some(media=>media.id===id));}
 export function resumeEpisode(series){
   const files=[...series.seasons.filter(s=>s.number!==0),...series.seasons.filter(s=>s.number===0)].flatMap(s=>s.episodes.map(e=>preferredVersion(e))).filter(available);
-  const active=files.filter(m=>(m.progress||0)>0&&(m.progress||0)<.96).sort((a,b)=>(b.lastPlayedAt||0)-(a.lastPlayedAt||0)||(episodeIdentity(b)?.season||0)-(episodeIdentity(a)?.season||0)||(episodeIdentity(b)?.number||0)-(episodeIdentity(a)?.number||0));
+  const active=files.filter(hasResume).sort((a,b)=>(b.lastPlayedAt||0)-(a.lastPlayedAt||0)||(episodeIdentity(b)?.season||0)-(episodeIdentity(a)?.season||0)||(episodeIdentity(b)?.number||0)-(episodeIdentity(a)?.number||0));
   return active[0]||files.find(m=>!completed(m))||files[0];
 }
 export function nextEpisode(items,current,groups){
@@ -97,6 +98,6 @@ export function nextEpisode(items,current,groups){
   return available(media)?{media,reason:'next'}:{media:null,reason:'offline'};
 }
 export function libraryEntries(items){
-  const series=groupSeries(items),byId=new Map(series.flatMap(s=>s.media.map(m=>[m.id,s]))),seen=new Set();
-  return items.flatMap(media=>{const group=byId.get(media.id);if(!group)return [{id:media.id,media}];if(seen.has(group.id))return [];seen.add(group.id);return [{id:group.id,media:{...group.representative,title:group.title,originalTitle:group.originalTitle,year:group.year||group.representative.year,favorite:group.media.some(m=>m.favorite)},series:group}];});
+  const series=groupSeries(items),byId=new Map(series.flatMap(s=>s.media.map(m=>[m.id,s]))),movies=new Map(groupMovies(items.filter(m=>!byId.has(m.id))).flatMap(g=>g.media.map(m=>[m.id,g]))),seen=new Set();
+  return items.flatMap(media=>{const group=byId.get(media.id);if(!group){const movie=movies.get(media.id);if(!movie)return [{id:media.id,media}];if(seen.has(movie.id))return [];seen.add(movie.id);return [{id:movie.id,media:movie.representative,movie}];}if(seen.has(group.id))return [];seen.add(group.id);return [{id:group.id,media:{...group.representative,title:group.title,originalTitle:group.originalTitle,year:group.year||group.representative.year,favorite:group.media.some(m=>m.favorite),watched:group.seasons.every(s=>s.episodes.every(e=>e.media.some(completed)))},series:group}];});
 }

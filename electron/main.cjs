@@ -12,6 +12,8 @@ const { MpvPlayer } = require('./mpv.cjs');
 const { probeMedia,toolPath } = require('./probe.cjs');
 const { normalizeColorMapping } = require('./color-mapping.cjs');
 const {EpisodePlayback}=require('./episode-playback.cjs');
+const {DuplicateScanner}=require('./duplicates.cjs');
+const {shouldRestart}=require('../shared/movies.mjs');
 
 protocol.registerSchemesAsPrivileged([{ scheme: 'luma-media', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true } }]);
 let window;
@@ -25,6 +27,7 @@ const player=new MpvPlayer();
 const networkFetch=(url,options)=>net.fetch(String(url),options);
 let settings = {};
 let episodePlayback;
+let duplicates;
 let saveQueue = Promise.resolve();
 const allowedFiles = new Set();
 const normalize = filename => path.resolve(filename).toLowerCase();
@@ -82,6 +85,12 @@ function wireIpc() {
     return service.patch(id,safe);
   });
   ipcMain.handle('settings:load',()=>settings);
+  ipcMain.handle('library:personal',(_,id,patch)=>service.personal(id,patch));
+  ipcMain.handle('library:preferred',(_,id)=>service.prefer(id));
+  ipcMain.handle('library:watched',(_,id,watched,scope)=>service.markWatched(id,watched,scope==='series'?'series':'item'));
+  ipcMain.handle('duplicates:status',()=>duplicates.state);
+  ipcMain.handle('duplicates:start',()=>duplicates.start());
+  ipcMain.handle('duplicates:cancel',()=>duplicates.cancel());
   ipcMain.handle('settings:save',async (_,next)=>{
     if(!next || typeof next.tmdbToken!=='string' || typeof next.mpvPath!=='string' || !['auto','native','mpv'].includes(next.defaultPlayer))throw new Error('设置格式无效。');
     next={...next,colorMapping:normalizeColorMapping(next.colorMapping)};
@@ -119,7 +128,9 @@ function wireIpc() {
     try { await fsp.access(actual.path,fs.constants.R_OK); } catch { throw new Error('影片文件暂时无法读取，请检查硬盘或 NAS 连接。'); }
     const executable=toolPath('mpv',settings.mpvPath);
     if(!executable)throw new Error('未找到 mpv，请在播放设置中指定 mpv.exe。');
-    return episodePlayback.open(executable,restart===true?{...actual,progress:0}:actual,{colorMapping:settings.colorMapping,audioOutput:process.env.LUMA_TEST_AUDIO_OUTPUT==='null'?'null':undefined});
+    const replay=restart===true||shouldRestart(actual);
+    const state=await episodePlayback.open(executable,replay?{...actual,progress:0}:actual,{colorMapping:settings.colorMapping,audioOutput:process.env.LUMA_TEST_AUDIO_OUTPUT==='null'?'null':undefined});
+    if(replay&&state.active&&state.mediaId===actual.id)service.patch(actual.id,{watched:false,watchedMarkedAt:0,progress:0});return state;
   });
   ipcMain.on('window:action',(_,action)=>{
     if(action==='minimize')window.minimize();
@@ -185,8 +196,9 @@ else {
       lastProgress=Date.now();
       service.patch(state.mediaId,{progress:Math.min(1,state.position/state.duration),duration:state.duration/60,lastPlayedAt:Date.now(),...(state.ended?{watched:true}:{})});
     });
-    episodePlayback=new EpisodePlayback({player,getMedia:()=>service.library?.media||[],getSettings:()=>({...settings,autoplay:!closing&&settings.autoplay!==false}),readable:async media=>{if(!media.path||!allowedFiles.has(normalize(media.path)))throw new Error('片源未授权。');await fsp.access(media.path,fs.constants.R_OK);},notice:message=>notify('player:changed',{...player.state,notice:message})});
+    episodePlayback=new EpisodePlayback({player,afterNext:media=>service.patch(media.id,{watched:false,watchedMarkedAt:0,progress:0}),getMedia:()=>service.library?.media||[],getSettings:()=>({...settings,autoplay:!closing&&settings.autoplay!==false}),readable:async media=>{if(!media.path||!allowedFiles.has(normalize(media.path)))throw new Error('片源未授权。');await fsp.access(media.path,fs.constants.R_OK);},notice:message=>notify('player:changed',{...player.state,notice:message})});
     protocol.handle('luma-media', serveLocalMedia);
+    duplicates=new DuplicateScanner({getMedia:()=>service.library?.media||[],notify:state=>notify('duplicates:changed',state),onHash:(file,hash)=>{if(closing)return;const m=service.library?.media.find(m=>m.id===file.id&&m.path===file.path);if(m)service.patch(m.id,{...hash,fileSize:file.size,modifiedAt:file.mtime,...(m.fileSize!==file.size||m.modifiedAt!==file.mtime?{technical:undefined}:{})});}});
     wireIpc();
     await createWindow();
   }).catch(error => { if(!closing)dialog.showErrorBox('Luma 无法启动', error.message); app.quit(); });
@@ -194,6 +206,7 @@ else {
     if(closing)return;event.preventDefault();closing=true;
     clearTimeout(backgroundTimer);
     episodePlayback?.cancel();
+    duplicates?.cancel();
     Promise.all([player.stop(),backgroundWork.then(()=>service?.close())]).finally(()=>{database?.close();app.quit();});
   });
   app.on('window-all-closed', () => app.quit());

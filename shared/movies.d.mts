@@ -1,0 +1,12 @@
+import type {Media} from '../src/types';
+export type MovieGroup={id:string;title:string;year:number;media:Media[];representative:Media};
+export function groupMovies(items:Media[]):MovieGroup[];
+export function movieFor(items:Media[],id:string,groups?:MovieGroup[]):MovieGroup|undefined;
+export function chooseVersion(media:Media[]):Media;
+export function editionLabel(media:Media):string;
+export function versionLabel(media:Media):string;
+export function isWatched(media:Media):boolean;
+export function hasResume(media:Media):boolean;
+export function shouldRestart(media:Media):boolean;
+export function collectionName(media:Media):string;
+export function facetNames(media:Media,kind:string):string[];

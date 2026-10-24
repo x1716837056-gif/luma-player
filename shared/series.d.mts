@@ -1,4 +1,5 @@
 import type {Media} from '../src/types';
+import type {MovieGroup} from './movies.mjs';
 export type SeriesEpisode={id:string;number:number|null;media:Media[]};
 export type SeriesSeason={number:number|null;episodes:SeriesEpisode[]};
 export type SeriesGroup={id:string;title:string;originalTitle:string;year:number;media:Media[];seasons:SeriesSeason[];episodeCount:number;representative:Media};
@@ -8,4 +9,4 @@ export function seriesFor(items:Media[],id:string,groups?:SeriesGroup[]):SeriesG
 export function resumeEpisode(series:SeriesGroup):Media|undefined;
 export function preferredVersion(episode:SeriesEpisode,sourceId?:string):Media;
 export function nextEpisode(items:Media[],current:Media,groups?:SeriesGroup[]):{media:Media|null;reason:string};
-export function libraryEntries(items:Media[]):{id:string;media:Media;series?:SeriesGroup}[];
+export function libraryEntries(items:Media[]):{id:string;media:Media;series?:SeriesGroup;movie?:MovieGroup}[];

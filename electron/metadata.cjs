@@ -57,6 +57,8 @@ async function resolveMetadata(media,candidate,token,language='zh-CN',fetcher=fe
   Object.assign(next,extractCertification(r,candidate.kind,language),{certificationCheckedAt:Date.now(),certificationError:''});
   next.cast=(r.credits?.cast||[]).slice(0,12).map(p=>p.name);
   next.director=(r.credits?.crew||[]).find(p=>p.job==='Director')?.name;
+  next.directors=[...new Set((r.credits?.crew||[]).filter(p=>p.job==='Director').map(p=>p.name))];
+  if(candidate.kind==='movie')next.collection=r.belongs_to_collection?{id:r.belongs_to_collection.id,name:r.belongs_to_collection.name}:undefined;
   if (candidate.kind==='movie' && r.runtime && !media.technical?.durationSeconds) next.duration=r.runtime;
   next.metadataStatus='matched'; next.metadataOrigin='tmdb'; next.metadataError='';
   return next;

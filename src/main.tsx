@@ -9,5 +9,6 @@ import './catalog.css';
 import './media-actions.css';
 import './playback-refinement.css';
 import './series.css';
+import './management.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><App /></React.StrictMode>);

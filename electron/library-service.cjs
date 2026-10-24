@@ -3,6 +3,8 @@ const { scanFolder }=require('./library.cjs');
 const { probeMedia }=require('./probe.cjs');
 const { searchMetadata, resolveMetadata, cacheArtwork, confidence, refreshCertification }=require('./metadata.cjs');
 const {seriesFor,episodeIdentity}=require('../shared/series.mjs');
+const {movieFor,groupMovies}=require('../shared/movies.mjs');
+const {applyPersonal,itemVersions,personalFields,metadataOnly}=require('../shared/user-library.mjs');
 class LibraryService {
   constructor({database,directory,getSettings,notify,authorize,fetcher=fetch}) {
     this.db=database;this.directory=directory;this.getSettings=getSettings;this.notify=notify;this.authorize=authorize;this.fetcher=fetcher;
@@ -22,6 +24,15 @@ class LibraryService {
   patch(id,patch) {
     const item=this.library?.media.find(m=>m.id===id);if(!item)return;
     Object.assign(item,patch);this.save();return item;
+  }
+  personal(id,patch){applyPersonal(this.library.media,id,patch);this.save();return this.library.media.find(m=>m.id===id);}
+  prefer(id){const versions=itemVersions(this.library.media,id);if(!versions.length)throw new Error('影片不在影音库中。');for(const m of versions)m.preferredVersion=m.id===id;this.save();return this.library.media.find(m=>m.id===id);}
+  markWatched(id,watched,scope='item'){
+    if(typeof watched!=='boolean')throw new Error('观看状态无效。');
+    const group=scope==='series'?seriesFor(this.library.media,id)?.media:itemVersions(this.library.media,id);
+    if(!group?.length)throw new Error('影片不在影音库中。');
+    for(const m of group){m.watched=watched;m.watchedMarkedAt=Date.now();if(!watched){m.progress=0;m.lastPlayedAt=0;}}
+    this.save();return this.library.media.find(m=>m.id===id);
   }
   replace(library) {
     this.library=library;this.save();void this.syncWatchers();
@@ -48,6 +59,11 @@ class LibraryService {
     });
     const retained=(current?.media||[]).filter(m=>!found.has(m.path?.toLowerCase())).map(m=>m.sourceId===result.source.id?{...m,...(!result.warnings.length?{missing:true}:{})}:m);
     this.library={demo:false,media:[...retained,...fresh],sources:[...(current?.sources||[]).filter(s=>s.id!==result.source.id),result.source]};
+    const oldIds=new Set((current?.media||[]).map(m=>m.id));
+    for(const group of [...groupMovies(this.library.media),...require('../shared/series.mjs').groupSeries(this.library.media)]){
+      const donor=group.media.filter(m=>oldIds.has(m.id)).sort((a,b)=>(b.personalUpdatedAt||0)-(a.personalUpdatedAt||0))[0];
+      if(donor)for(const m of group.media)if(!oldIds.has(m.id))for(const key of personalFields)if(donor[key]!==undefined)m[key]=donor[key];
+    }
     this.save();await this.syncWatchers();
     this.enqueue(fresh.filter(m=>!m.technical || (this.getSettings().autoScrape && !m.metadataOrigin && !m.tmdbId)));
     return result;
@@ -81,7 +97,7 @@ class LibraryService {
           }
           const details=await this.tmdbQueue.add(()=>resolveMetadata(current,ranked[0].item,prefs.tmdbToken,prefs.metadataLanguage,this.fetcher,signal),{signal});
           const cached=await cacheArtwork(details,path.join(this.directory,'artwork'),this.fetcher,signal);
-          if(!signal.aborted && !this.library.media.find(m=>m.id===current.id)?.metadataOrigin) { const {id,path:filename,sourceId,videoUrl,progress,favorite,watched,...metadata}=cached;this.patch(current.id,metadata);this.stats.matched++; }
+          if(!signal.aborted && !this.library.media.find(m=>m.id===current.id)?.metadataOrigin) {this.patch(current.id,metadataOnly(cached));this.stats.matched++; }
         }
         current=this.library.media.find(m=>m.id===media.id);
         if(current?.tmdbId && !current.certificationCheckedAt && prefs.tmdbToken && (force||prefs.autoScrape)) {
@@ -104,15 +120,21 @@ class LibraryService {
     const media=this.library?.media.find(m=>m.id===id);
     if(!media || !Number.isInteger(candidate.tmdbId)||!['movie','tv'].includes(candidate.kind))throw new Error('请选择有效的影片。');
     const series=media.kind==='tv'?seriesFor(this.library.media,id):null;
+    const movie=media.kind!=='tv'?movieFor(this.library.media,id):null;
     const prefs=this.getSettings();
     const details=await this.tmdbQueue.add(()=>resolveMetadata(media,candidate,prefs.tmdbToken,prefs.metadataLanguage,this.fetcher));
     const cached=await cacheArtwork(details,path.join(this.directory,'artwork'),this.fetcher);
-    const {id:unused,path:filename,sourceId,videoUrl,progress,favorite,watched,...patch}=cached;
+    const patch=metadataOnly(cached);
     if(series&&candidate.kind==='tv'){
-      const fields=['title','originalTitle','seriesTitle','seriesOriginalTitle','seriesYear','seriesDescription','tmdbId','year','description','poster','backdrop','genre','rating','certification','certificationRegion','minimumAge','certificationCheckedAt','cast','director','metadataStatus','metadataError'];
+      const fields=['title','originalTitle','seriesTitle','seriesOriginalTitle','seriesYear','seriesDescription','tmdbId','year','description','poster','backdrop','genre','rating','certification','certificationRegion','minimumAge','certificationCheckedAt','cast','director','directors','metadataStatus','metadataError'];
       const seriesPatch=Object.fromEntries(fields.filter(key=>patch[key]!==undefined).map(key=>[key,patch[key]]));
       for(const episode of series.media)Object.assign(episode,seriesPatch,{metadataOrigin:'manual'});
       this.save();return this.library.media.find(m=>m.id===id);
+    }
+    if(movie&&candidate.kind==='movie'){
+      const fields=['title','originalTitle','tmdbId','year','description','poster','backdrop','genre','rating','certification','certificationRegion','minimumAge','certificationCheckedAt','cast','director','directors','collection','metadataStatus','metadataError'];
+      const values=Object.fromEntries(fields.filter(key=>patch[key]!==undefined).map(key=>[key,patch[key]]));
+      for(const version of movie.media)Object.assign(version,values,{metadataOrigin:'manual'});this.save();return this.library.media.find(m=>m.id===id);
     }
     return this.patch(id,{...patch,metadataOrigin:'manual'});
   }

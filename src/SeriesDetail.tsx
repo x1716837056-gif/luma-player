@@ -1,9 +1,9 @@
 import {ArrowLeft,Check,ChevronRight,Film,Play,Tv} from 'lucide-react';
 import {episodeIdentity,preferredVersion,resumeEpisode,type SeriesGroup} from '../shared/series.mjs';
 import type {Media} from './types';
-import {useLayoutEffect,useRef} from 'react';
+import {useLayoutEffect,useRef,type ReactNode} from 'react';
 export const seasonName=(number:number|null)=>number===null?'季数未识别':number===0?'特别篇':`第 ${number} 季`;
-export function SeriesDetail({series,season,onSeason,onPlay,onDetails}:{series:SeriesGroup;season:number|null|undefined;onSeason:(season:number|null|undefined)=>void;onPlay:(media:Media)=>void;onDetails:(media:Media)=>void}){
+export function SeriesDetail({series,season,onSeason,onPlay,onDetails,personal,onWatched}:{series:SeriesGroup;season:number|null|undefined;onSeason:(season:number|null|undefined)=>void;onPlay:(media:Media)=>void;onDetails:(media:Media)=>void;personal?:ReactNode;onWatched?:(media:Media,value:boolean)=>void}){
   const media=series.representative,resume=resumeEpisode(series),active=series.seasons.find(s=>s.number===season),image=media.backdrop||media.poster;
   const root=useRef<HTMLDivElement>(null);
   useLayoutEffect(()=>{if(root.current&&!root.current.contains(document.activeElement))root.current.querySelector<HTMLButtonElement>('.series-breadcrumb button')?.focus();},[season]);
@@ -15,6 +15,7 @@ export function SeriesDetail({series,season,onSeason,onPlay,onDetails}:{series:S
         <div className="series-actions">{resume&&<button className="button-primary" onClick={()=>onPlay(resume)}><Play size={15} fill="currentColor"/>{resume.progress&&resume.progress<.96?'继续播放':resume.watched||(resume.progress||0)>=.96?'重新观看':'开始观看'}<small>{seasonName(episodeIdentity(resume)?.season??null)} · 第 {episodeIdentity(resume)?.number??'—'} 集</small></button>}<button className="button-glass" onClick={()=>onDetails(media)}>剧集资料<ChevronRight size={14}/></button></div>
       </div>
     </header>
+    {personal}
     <section className="series-browser" aria-label="剧集季集浏览">
       <div className="series-breadcrumb"><button onClick={()=>onSeason(undefined)} aria-current={season===undefined?'page':undefined}>{season===undefined?<Tv size={16}/>:<ArrowLeft size={16}/>}全部季</button>{season!==undefined&&<><ChevronRight size={13}/><span>{seasonName(season)}</span></>}</div>
       {season===undefined?<div className="series-seasons">{series.seasons.map(s=>{
@@ -28,7 +29,7 @@ export function SeriesDetail({series,season,onSeason,onPlay,onDetails}:{series:S
           return <article className={`episode-row ${unavailable?'is-missing':''}`} key={episode.id} data-media-id={file.id}>
             <span className="episode-number">{episode.number===null?'—':String(episode.number).padStart(2,'0')}</span><div className="episode-copy"><strong>{title}{watched&&<Check size={13} aria-label="已看"/>}</strong><span>{unavailable?'片源离线 · 已保留进度':`${Math.round(file.duration)||'—'} 分钟 · ${file.quality}${episode.media.length>1?` · ${episode.media.length} 个版本`:''}`}</span>{file.episodeDescription&&<p className="episode-description">{file.episodeDescription}</p>}{Boolean(progress)&&<div className="episode-progress"><i style={{width:`${progress*100}%`}}/></div>}</div>
             {episode.media.length>1?<select aria-label={`第 ${episode.number} 集片源`} defaultValue={file.id} onChange={e=>{const chosen=episode.media.find(m=>m.id===e.target.value);if(chosen)onPlay(chosen);}}>{episode.media.map(m=><option key={m.id} value={m.id}>{m.missing?'离线 · ':''}{m.quality} · {m.path?.split(/[\\/]/).at(-1)}</option>)}</select>:null}
-            <button className="episode-info" aria-label={`第 ${episode.number??'未识别'} 集信息`} onClick={()=>onDetails(file)}><Film size={17}/></button><button className="episode-play" disabled={unavailable} aria-label={`播放第 ${episode.number??'未识别'} 集`} onClick={()=>onPlay(file)}><Play size={18} fill="currentColor"/></button>
+            {onWatched&&<button className={`episode-info episode-watched ${watched?'active':''}`} aria-label={`第 ${episode.number??'未识别'} 集标记${watched?'未看':'已看'}`} title={watched?'标记未看并重置本集进度':'标记已看'} onClick={()=>onWatched(file,!watched)}><Check size={17}/></button>}<button className="episode-info" aria-label={`第 ${episode.number??'未识别'} 集信息`} onClick={()=>onDetails(file)}><Film size={17}/></button><button className="episode-play" disabled={unavailable} aria-label={`播放第 ${episode.number??'未识别'} 集`} onClick={()=>onPlay(file)}><Play size={18} fill="currentColor"/></button>
           </article>;
         })}</div>
       </>}

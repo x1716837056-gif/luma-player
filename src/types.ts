@@ -17,6 +17,18 @@ export type Media = {
   description: string;
   director?: string;
   cast?: string[];
+  directors?:string[];
+  collection?:{id?:number;name:string};
+  collectionName?:string;
+  watchlist?:boolean;
+  personalRating?:number;
+  notes?:string;
+  personalUpdatedAt?:number;
+  preferredVersion?:boolean;
+  editionLabel?:string;
+  contentHash?:string;
+  hashSize?:number;
+  hashModifiedAt?:number;
   progress?: number;
   episode?: string;
   sourceId: string;
@@ -27,6 +39,7 @@ export type Media = {
   quality: string;
   favorite?: boolean;
   watched?: boolean;
+  watchedMarkedAt?:number;
   addedAt: number;
   tmdbId?: number;
   imported?: boolean;
@@ -56,6 +69,8 @@ export type Source = {
 };
 
 export type Library = { media: Media[]; sources: Source[]; demo: boolean };
+export type PersonalPatch=Pick<Partial<Media>,'favorite'|'watchlist'|'personalRating'|'notes'|'collectionName'>;
+export type DuplicateStatus={running:boolean;phase:string;total:number;checked:number;bytesRead:number;bytesTotal:number;groups:{hash:string;size:number;files:{id:string;title:string;path:string;size:number}[]}[];errors:{id?:string;message:string}[]};
 export type ColorMapping = {output:'auto'|'sdr'|'hdr';curve:'auto'|'spline'|'bt.2390'|'bt.2446a'|'st2094-40'|'st2094-10';peakNits:number;dynamicPeak:boolean};
 export type Settings = { theme: 'dark' | 'light'; tmdbToken: string; metadataLanguage: string; autoplay: boolean; defaultPlayer: 'auto' | 'native' | 'mpv'; mpvPath: string; autoScrape: boolean; watchFolders: boolean; colorMapping?:ColorMapping; };
 export type ScanResult = { media: Media[]; source: Source; warnings: string[] };
@@ -76,6 +91,13 @@ declare global {
       scrape(media: Media, query: string, kind: Media['kind']): Promise<Media[]>;
       playMpv(media: Media,restart?:boolean): Promise<PlayerState>;
       updateMedia(id: string, patch: Partial<Media>): Promise<Media>;
+      updatePersonal(id:string,patch:PersonalPatch):Promise<Media>;
+      preferVersion(id:string):Promise<Media>;
+      markWatched(id:string,watched:boolean,scope?:'item'|'series'):Promise<Media>;
+      duplicateStatus():Promise<DuplicateStatus>;
+      scanDuplicates():Promise<DuplicateStatus>;
+      cancelDuplicates():Promise<DuplicateStatus>;
+      onDuplicatesChanged(callback:(status:DuplicateStatus)=>void):()=>void;
       applyMetadata(id: string, candidate: Media): Promise<Media>;
       probeMedia(id: string): Promise<Media>;
       startTasks(): Promise<TaskStatus>;
