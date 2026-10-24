@@ -119,7 +119,8 @@ function wireIpc() {
   ipcMain.handle('cloud:accounts',()=>{if(vaultError)throw Error(vaultError);return vault.accounts();});
   ipcMain.handle('cloud:login',(_,provider,id)=>{if(vaultError)throw Error(vaultError);return cloudAuth.login(provider,id);});
   ipcMain.handle('cloud:cancel',()=>cloudAuth.cancel());
-  ipcMain.handle('cloud:list',(_,id,folder)=>cloud.list(id,folder));
+  ipcMain.handle('cloud:list',(_,id,folder,page)=>cloud.browse(id,folder,page));
+  ipcMain.handle('cloud:cancel-read',(_,id,folder)=>cloud.cancel(id,folder));
   ipcMain.handle('cloud:add',(_,id,folder)=>{if(!vault.account(id))throw Error('请先登录网盘。');return service.scan('cloud://'+id+String(folder||'/').split('/').map(encodeURIComponent).join('/'),'cloud');});
   ipcMain.handle('cloud:logout',async(_,id)=>{if(service.library?.media.find(m=>m.id===player.state.mediaId)?.remote?.accountId===id)await player.stop();await vault.remove(id);cloud.disconnect(id);await cloudCore.forget(id).catch(()=>{});for(const m of service.library?.media||[])if(m.remote?.accountId===id)m.missing=true;for(const source of service.library?.sources||[])if(source.accountId===id)source.status='offline';if(service.library)service.save();});
   ipcMain.handle('metadata:search',(_,media,query,kind)=>searchMetadata(media,query,kind,settings.tmdbToken,settings.metadataLanguage,networkFetch));
@@ -197,7 +198,7 @@ else {
     if (settings.encryptedToken) { try { settings.tmdbToken = safeStorage.decryptString(Buffer.from(settings.encryptedToken, 'base64')); } catch { settings.tmdbToken = ''; } delete settings.encryptedToken; }
     vault=new SourceVault(app.getPath('userData'),safeStorage);try{await vault.init();}catch(e){vaultError=e.message;}
     cloudCore=new OpenListCore({directory:app.getPath('userData'),vault});smb=new SmbConnections(vault);
-    cloud=new CloudLibrary({core:cloudCore,vault,getLibrary:()=>service?.library});
+    cloud=new CloudLibrary({core:cloudCore,vault,getLibrary:()=>service?.library,onProgress:progress=>notify('cloud:progress',progress)});
     cloudAuth=new CloudAuth({parent:()=>window,core:cloudCore,vault,onChange:id=>{notify('cloud:changed',vault.accounts());for(const source of service?.library?.sources||[])if(source.accountId===id)void service.scan(source.path,'cloud').catch(()=>{});}});
     database=openLibraryDatabase(app.getPath('userData'));
     service=new LibraryService({database,directory:app.getPath('userData'),getSettings:()=>settings,notify,getInput:media=>cloud.input(media),connectSource:folder=>smb.open({path:folder}),authorize:media=>{allowedFiles.clear();authorizeMedia(media);},fetcher:networkFetch});

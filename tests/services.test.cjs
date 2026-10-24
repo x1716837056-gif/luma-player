@@ -11,6 +11,15 @@ async function temporary(t) {const root=await fs.mkdtemp(path.join(os.tmpdir(),'
 async function until(check,timeout=12000) {const deadline=Date.now()+timeout;while(!check()){if(Date.now()>deadline)throw new Error('Timed out waiting for expected state');await delay(100);}}
 const media={id:'movie',path:'D:/Movies/Dune.mkv',sourceId:'local',title:'Dune',originalTitle:'Dune',kind:'movie',year:2021,genre:[],description:'',duration:1,poster:'',backdrop:'',quality:'4K',rating:'',certification:'',addedAt:1,technical:{durationSeconds:60},imported:true};
 
+test('large cloud imports and metadata matching never probe every remote video; canceled scans retain the library',async t=>{
+  const directory=await temporary(t),db=openLibraryDatabase(directory);let inputCalls=0;
+  const prefs={autoScrape:true,watchFolders:false,tmdbToken:''};const service=new LibraryService({database:db,directory,getSettings:()=>prefs,notify(){},authorize(){},getInput:async()=>{inputCalls++;throw Error('Unexpected video download');},fetcher:async()=>new Response(JSON.stringify({results:[]}))});await service.init();
+  const source={id:'cloud',type:'cloud',path:'cloud://a/',accountId:'a',status:'online'},items=Array.from({length:1000},(_,i)=>({...media,id:'cloud-'+i,title:'Film '+i,path:`cloud://a/Film.${i}.2024.mkv`,remote:{accountId:'a',path:`/Film.${i}.2024.mkv`},sourceId:'cloud',technical:undefined}));
+  service.remote={scan:async()=>({source,media:items,warnings:[]})};await service.scan(source.path,'cloud');await service.queue.onIdle();assert.equal(service.library.media.length,1000);assert.equal(inputCalls,0);assert.equal(service.stats.total,0);
+  prefs.tmdbToken='test';service.enqueue(items.slice(0,2));await service.queue.onIdle();assert.equal(inputCalls,0);assert.equal(service.library.media[0].metadataStatus,'review');
+  service.personal(items[0].id,{notes:'keep notes'});service.patch(items[0].id,{progress:.4});service.remote.scan=async(_,options)=>{await options.onBatch({source,media:[{...items[0],id:'new-discovery',path:'cloud://a/New.2025.mkv'}],warnings:[]});throw new DOMException('Canceled','AbortError');};await assert.rejects(service.scan(source.path,'cloud'),{name:'AbortError'});const saved=db.load();assert.equal(saved.sources[0].status,'online');assert.equal(saved.media.length,1001);assert.equal(saved.media.find(m=>m.id===items[0].id).progress,.4);assert.equal(saved.media.find(m=>m.id===items[0].id).notes,'keep notes');assert.ok(saved.media.every(m=>!m.missing));await service.close();db.close();
+});
+
 test('matching a TV show updates its episodes together without overwriting episode identity, runtime or progress',async t=>{
   const directory=await temporary(t),db=openLibraryDatabase(directory);
   const first={...media,id:'ep1',kind:'tv',seriesTitle:'A Show',title:'A Show',originalTitle:'A Show',season:1,episodeNumber:1,episodeTitle:'Pilot',episodeDescription:'First plot',path:'D:/A Show/S01E01.mkv',progress:.3,favorite:true};

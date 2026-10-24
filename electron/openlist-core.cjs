@@ -22,11 +22,17 @@ class OpenListCore{
     const response=await this.request('/auth/login',{username:'admin',password},false);this.token=response.token;
     this.timer=setInterval(()=>void this.snapshot().catch(()=>{}),15000);this.timer.unref();
   }
-  async request(route,body,auth=true){const r=await this.fetcher(this.base+'/api'+route,{method:body===undefined?'GET':'POST',headers:{'Content-Type':'application/json',...(auth?{Authorization:this.token}:{})},...(body===undefined?{}:{body:JSON.stringify(body)}),signal:AbortSignal.timeout(90000)});let value;try{value=await r.json();}catch{throw Error('网盘服务响应无效。');}if(!r.ok||value.code!==200){const e=Error(`网盘服务请求未完成（${Number(value.code)||r.status}），请重新登录或稍后重试。`);e.status=r.status;throw e;}return value.data;}
-  async api(route,body){await this.start();return this.request(route,body);}
+  async request(route,body,auth=true,{signal,timeout=90000}={}){
+    const timed=AbortSignal.timeout(timeout),combined=signal?AbortSignal.any([signal,timed]):timed;
+    try{const r=await this.fetcher(this.base+'/api'+route,{method:body===undefined?'GET':'POST',headers:{'Content-Type':'application/json',...(auth?{Authorization:this.token}:{})},...(body===undefined?{}:{body:JSON.stringify(body)}),signal:combined});let value;try{value=await r.json();}catch(error){combined.throwIfAborted();throw Error('网盘服务响应无效。');}if(!r.ok||value.code!==200){const e=Error(`网盘服务请求未完成（${Number(value.code)||r.status}），请重新登录或稍后重试。`);e.status=r.status;throw e;}return value.data;}
+    catch(error){if(signal?.aborted)throw signal.reason;if(timed.aborted)throw Error(route==='/fs/list'?'网盘目录读取超时。已保存的片库和进度未受影响，可以稍后重试。':'网盘连接请求超时，请稍后重试。');throw error;}
+  }
+  async api(route,body,options){await this.start();options?.signal?.throwIfAborted();return this.request(route,body,true,options);}
   async ensure(account){await this.start();if(this.mounts.has(account.id))return this.mounts.get(account.id);if(this.pending.has(account.id))return this.pending.get(account.id);
     const work=(async()=>{const drivers={'115':'115 Open',baidu:'BaiduNetdisk',quark:'Quark'};if(!drivers[account.provider])throw Error('不支持的网盘。');const mount='/luma/'+account.id;
-      await this.request('/admin/storage/create',{mount_path:mount,driver:drivers[account.provider],cache_expiration:5,web_proxy:true,webdav_policy:'native_proxy',addition:JSON.stringify(account.addition),enable_sign:true,disabled:false});
+      // Use the supported 115 page maximum without increasing its request rate; applies to existing saved accounts too.
+      const addition={...account.addition,...(account.provider==='115'?{page_size:1150}:{})};
+      await this.request('/admin/storage/create',{mount_path:mount,driver:drivers[account.provider],cache_expiration:30,web_proxy:true,webdav_policy:'native_proxy',addition:JSON.stringify(addition),enable_sign:true,disabled:false});
       const all=await this.request('/admin/storage/list?page=1&per_page=0');const storage=all.content.find(s=>s.mount_path===mount);if(!storage)throw Error('网盘连接未创建。');this.mounts.set(account.id,{mount,storageId:storage.id});return this.mounts.get(account.id);
     })().finally(()=>this.pending.delete(account.id));this.pending.set(account.id,work);return work;}
   async snapshot(){if(!this.token||!this.child||this.child.exitCode!==null)return;const all=await this.request('/admin/storage/list?page=1&per_page=0');let changed=false;for(const [id,{storageId}]of this.mounts){const account=this.vault.account(id),storage=all.content.find(s=>s.id===storageId);if(account&&storage){const addition=JSON.parse(storage.addition);if(JSON.stringify(account.addition)!==JSON.stringify(addition)){account.addition=addition;changed=true;}}}if(changed)await this.vault.save();}

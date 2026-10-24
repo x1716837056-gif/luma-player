@@ -39,7 +39,7 @@ export type Media = {
   fileSize?: number;
   modifiedAt?: number;
   videoUrl?: string;
-  remote?:{accountId:string;path:string};
+  remote?:{accountId:string;path:string;discRoot?:string};
   displayPath?:string;
   quality: string;
   favorite?: boolean;
@@ -79,6 +79,8 @@ export type Library = { media: Media[]; sources: Source[]; demo: boolean };
 export type CloudProvider='115'|'baidu'|'quark';
 export type CloudAccount={id:string;provider:CloudProvider;label:string;connected?:boolean};
 export type RemoteEntry={name:string;path:string;isDirectory:boolean;size:number;modifiedAt:number};
+export type CloudPage={entries:RemoteEntry[];total:number;page:number;nextPage:number|null};
+export type CloudProgress={accountId:string;folder:string;phase:'scanning'|'complete'|'cancelled'|'failed';files:number;folders:number;entries:number};
 export type PersonalPatch=Pick<Partial<Media>,'favorite'|'watchlist'|'personalRating'|'notes'|'collectionName'>;
 export type DuplicateStatus={running:boolean;phase:string;total:number;checked:number;bytesRead:number;bytesTotal:number;groups:{hash:string;size:number;files:{id:string;title:string;path:string;size:number}[]}[];errors:{id?:string;message:string}[]};
 export type ColorMapping = {output:'auto'|'sdr'|'hdr';curve:'auto'|'spline'|'bt.2390'|'bt.2446a'|'st2094-40'|'st2094-10';peakNits:number;dynamicPeak:boolean};
@@ -102,7 +104,9 @@ declare global {
       cloudAccounts():Promise<CloudAccount[]>;
       cloudLogin(provider:CloudProvider,id?:string):Promise<CloudAccount>;
       cancelCloudLogin():Promise<void>;
-      cloudList(id:string,path:string):Promise<RemoteEntry[]>;
+      cloudList(id:string,path:string,page?:number):Promise<CloudPage>;
+      cancelCloudRead(id:string,path:string):Promise<void>;
+      onCloudProgress(callback:(progress:CloudProgress)=>void):()=>void;
       addCloudFolder(id:string,path:string):Promise<ScanResult>;
       cloudLogout(id:string):Promise<void>;
       scrape(media: Media, query: string, kind: Media['kind']): Promise<Media[]>;

@@ -41,13 +41,19 @@ class LibraryService {
     const key=String(folder).startsWith('cloud:')?folder:path.resolve(folder).toLowerCase();
     if(this.scans.has(key)) return this.scans.get(key);
     const work=this.performScan(folder,type).catch(error=>{
+      if(error.name==='AbortError')throw error;
       if(this.library){this.library.sources=this.library.sources.map(s=>(s.type==='cloud'?s.path:path.resolve(s.path).toLowerCase())===key?{...s,status:'offline'}:s);this.save();}
       throw error;
     }).finally(()=>this.scans.delete(key));this.scans.set(key,work);return work;
   }
   async performScan(folder,type) {
     if(type==='nas')await this.connectSource(folder);
-    const result=type==='cloud'?await this.remote.scan(folder):await scanFolder(folder,type);
+    const result=type==='cloud'?await this.remote.scan(folder,{onBatch:batch=>this.mergeScan(batch,false)}):await scanFolder(folder,type);
+    const fresh=this.mergeScan(result,true);await this.syncWatchers();
+    this.enqueue(fresh.filter(m=>!m.technical || (this.getSettings().autoScrape && !m.metadataOrigin && !m.tmdbId)));
+    return result;
+  }
+  mergeScan(result,complete=true){
     const current=this.library?.demo?null:this.library;
     const fileKey=value=>value?.startsWith('cloud:')?value:value?.toLowerCase();
     const existing=new Map((current?.media||[]).map(m=>[fileKey(m.path),m]));
@@ -59,16 +65,14 @@ class LibraryService {
         // A changed file needs a fresh probe, but keeps user metadata and viewing history.
         technical:old.fileSize===m.fileSize && old.modifiedAt===m.modifiedAt?old.technical:undefined}:m;
     });
-    const retained=(current?.media||[]).filter(m=>!found.has(fileKey(m.path))).map(m=>m.sourceId===result.source.id?{...m,...(!result.warnings.length?{missing:true}:{})}:m);
+    const retained=(current?.media||[]).filter(m=>!found.has(fileKey(m.path))).map(m=>complete&&m.sourceId===result.source.id?{...m,...(!result.warnings.length?{missing:true}:{})}:m);
     this.library={demo:false,media:[...retained,...fresh],sources:[...(current?.sources||[]).filter(s=>s.id!==result.source.id),result.source]};
     const oldIds=new Set((current?.media||[]).map(m=>m.id));
     for(const group of [...groupMovies(this.library.media),...require('../shared/series.mjs').groupSeries(this.library.media)]){
       const donor=group.media.filter(m=>oldIds.has(m.id)).sort((a,b)=>(b.personalUpdatedAt||0)-(a.personalUpdatedAt||0))[0];
       if(donor)for(const m of group.media)if(!oldIds.has(m.id))for(const key of personalFields)if(donor[key]!==undefined)m[key]=donor[key];
     }
-    this.save();await this.syncWatchers();
-    this.enqueue(fresh.filter(m=>!m.technical || (this.getSettings().autoScrape && !m.metadataOrigin && !m.tmdbId)));
-    return result;
+    this.save();return fresh;
   }
   status() { return {...this.stats,queued:this.queue?.size||0,active:this.queue?.pending||0}; }
   emitStatus() { this.notify('tasks:changed',this.status()); }
@@ -78,12 +82,14 @@ class LibraryService {
     const signal=this.controller.signal;
     for(const media of items) {
       if(this.jobs.has(media.id) || media.missing)continue;
+      // Cloud imports index names, not video bytes. Fetch remote technical tracks only on an explicit probe/playback.
+      if(media.remote&&!((force||(this.getSettings().autoScrape&&this.getSettings().tmdbToken))&&((!media.metadataOrigin&&!media.tmdbId)||(media.tmdbId&&!media.certificationCheckedAt))))continue;
       this.jobs.add(media.id);this.stats.total++;this.stats.running=true;this.db.job(media.id,'queued');
       const task=this.queue.add(async()=>{
         if(signal.aborted)throw new Error('任务已取消');
         this.db.job(media.id,'running');
         let current=this.library.media.find(m=>m.id===media.id);if(!current)return;
-        if(!current.technical) {
+        if(!current.technical&&!current.remote) {
           try { const probe=await probeMedia(await this.getInput(current),undefined,signal);if(!signal.aborted)this.patch(current.id,probe); }
           catch(error) { if(!signal.aborted)this.patch(current.id,{probeError:error.message}); }
         }

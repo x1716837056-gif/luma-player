@@ -15,12 +15,12 @@ export function chooseVersion(media){
   const duration=Math.max(...media.map(m=>m.technical?.durationSeconds||m.duration*60||0));
   const sample=m=>duration>1800&&(m.technical?.durationSeconds||m.duration*60||duration)<600;
   const resolution=m=>m.technical?.width||(/4k|2160/i.test(m.quality||stem(m))?3840:/1080/i.test(m.quality||stem(m))?1920:0);
-  return [...media].sort((a,b)=>Number(Boolean(a.missing))-Number(Boolean(b.missing))||Number(Boolean(b.preferredVersion))-Number(Boolean(a.preferredVersion))||Number(sample(a))-Number(sample(b))||resolution(b)-resolution(a)||(b.lastPlayedAt||0)-(a.lastPlayedAt||0)||a.id.localeCompare(b.id))[0];
+  return [...media].sort((a,b)=>Number(Boolean(a.missing))-Number(Boolean(b.missing))||Number(Boolean(b.preferredVersion))-Number(Boolean(a.preferredVersion))||Number(sample(a))-Number(sample(b))||resolution(b)-resolution(a)||(a.remote?.discRoot&&b.remote?.discRoot?(b.fileSize||0)-(a.fileSize||0):0)||(b.lastPlayedAt||0)-(a.lastPlayedAt||0)||a.id.localeCompare(b.id))[0];
 }
 export function groupMovies(items){
   const movies=items.filter(m=>m.kind!=='tv'),parents=movies.map((_,i)=>i),keys=new Map(),aliases=new Map();
   const root=i=>parents[i]===i?i:(parents[i]=root(parents[i]));const join=(i,j)=>{parents[root(i)]=root(j);};
-  const identities=movies.map(m=>{const parsed=parseRelease(stem(m)),name=norm(clean(m.originalTitle||m.title||parsed.title)),year=m.year||parsed.year||0;return {name,year,alias:`${name}:${year}`,key:m.tmdbId?`movie:tmdb:${m.tmdbId}`:year&&name?`movie:${name}:${year}`:`movie:file:${m.id}`};});
+  const identities=movies.map(m=>{const parsed=parseRelease(stem(m)),name=norm(clean(m.originalTitle||m.title||parsed.title)),year=m.year||parsed.year||0;return {name,year,alias:`${name}:${year}`,key:m.tmdbId?`movie:tmdb:${m.tmdbId}`:m.remote?.discRoot?`movie:disc:${m.remote.accountId}:${m.remote.discRoot}`:year&&name?`movie:${name}:${year}`:`movie:file:${m.id}`};});
   for(let i=0;i<movies.length;i++){const m=movies[i],identity=identities[i];if(m.tmdbId){if(!aliases.has(identity.alias))aliases.set(identity.alias,new Set());aliases.get(identity.alias).add(identity.key);}}
   for(let i=0;i<movies.length;i++){
     const m=movies[i],identity=identities[i],matching=aliases.get(identity.alias);
@@ -28,9 +28,10 @@ export function groupMovies(items){
     const hashes=m.contentHash&&m.hashSize===m.fileSize&&m.hashModifiedAt===m.modifiedAt?[`hash:${m.contentHash}`]:[];
     for(const key of [identityKey,...hashes]){if(keys.has(key))join(i,keys.get(key));else keys.set(key,i);}
   }
+  const identityByMedia=new Map(movies.map((m,i)=>[m,identities[i]]));
   const groups=new Map();for(let i=0;i<movies.length;i++){const key=root(i);if(!groups.has(key))groups.set(key,[]);groups.get(key).push(movies[i]);}
   return [...groups.values()].map(media=>{
-    const preferred=chooseVersion(media),info=[...media].sort((a,b)=>Number(Boolean(b.tmdbId))-Number(Boolean(a.tmdbId))||Number(Boolean(b.poster))-Number(Boolean(a.poster)))[0],identity=identities[movies.indexOf(info)];
+    const preferred=chooseVersion(media),info=[...media].sort((a,b)=>Number(Boolean(b.tmdbId))-Number(Boolean(a.tmdbId))||Number(Boolean(b.poster))-Number(Boolean(a.poster)))[0],identity=identityByMedia.get(info);
     const personal=[...media].sort((a,b)=>(b.personalUpdatedAt||0)-(a.personalUpdatedAt||0))[0];
     const representative={...preferred,title:clean(info.title)||info.title,originalTitle:clean(info.originalTitle)||info.originalTitle,poster:info.poster||preferred.poster,backdrop:info.backdrop||preferred.backdrop,favorite:media.some(m=>m.favorite),watched:media.some(isWatched)};
     for(const key of ['director','directors','cast','people','collection'])if(!representative[key]&&info[key])representative[key]=info[key];
