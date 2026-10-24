@@ -7,7 +7,7 @@ const path = require('node:path');
 const {colorArguments}=require('./color-mapping.cjs');
 
 class MpvPlayer extends EventEmitter {
-  constructor() { super(); this.state={active:false}; this.pending=new Map(); this.sequence=0; }
+  constructor() { super(); this.state={active:false}; this.pending=new Map(); this.sequence=0;this.loadedSerial=0; }
   async start(executable,media,options={}) {
     const operation=(this.opening||Promise.resolve()).catch(()=>{}).then(async()=>{
       try { return await this.open(executable,media,options); }
@@ -18,6 +18,7 @@ class MpvPlayer extends EventEmitter {
   }
   async open(executable,media,options={}) {
     await this.stop();
+    this.loading=false;this.finishedMediaId=null;
     const pipe=process.platform==='win32'?`\\\\.\\pipe\\luma-${crypto.randomUUID()}`:`/tmp/luma-${crypto.randomUUID()}`;
     const seconds=media.technical?.durationSeconds || media.duration*60 || 0;
     const script=[process.resourcesPath && path.join(process.resourcesPath,'player/luma-osc.lua'),path.join(__dirname,'player/luma-osc.lua')].filter(Boolean).find(file=>fs.existsSync(file));
@@ -26,6 +27,7 @@ class MpvPlayer extends EventEmitter {
     const args=['--no-config','--no-terminal','--force-window=yes','--keep-open=no','--hwdec=auto-copy','--osc=no','--osd-bar=no',`--script=${script}`,'--autofit=85%x85%',`--input-ipc-server=${pipe}`,`--title=Luma · ${media.title}`,`--force-media-title=${media.title}`];
     if(process.platform==='win32')args.push('--vo=gpu-next','--gpu-api=d3d11','--title-bar=no','--window-corners=round');
     args.push(...colorArguments(options.colorMapping));
+    if(options.episodeChain)args.push('--keep-open=yes');
     if(options.mute)args.push('--mute=yes');
     // Allows control tests to run on machines without an audio endpoint.
     if(options.audioOutput==='null')args.push('--ao=null');
@@ -64,7 +66,7 @@ class MpvPlayer extends EventEmitter {
       title:media.title,originalTitle:media.originalTitle,year:media.year,description:media.description,
       director:media.director,cast:media.cast,genre:media.genre,path:media.path,fileSize:media.fileSize,technical:media.technical,
     }]);
-    for(const [i,property] of ['time-pos','duration','pause','track-list'].entries()) await this.command(['observe_property',i+1,property]);
+    for(const [i,property] of ['time-pos','duration','pause','track-list','eof-reached'].entries()) await this.command(['observe_property',i+1,property]);
     // A connected IPC pipe alone does not prove the decoder produced video.
     let output;
     for(let attempt=0;attempt<60;attempt++) {
@@ -79,22 +81,56 @@ class MpvPlayer extends EventEmitter {
     return this.state;
   }
   message(message) {
+    if(message.event==='file-loaded'){this.loadedSerial++;this.emit('file-loaded');}
+    if(message.event==='client-message'&&message.args?.[0]==='luma-next-episode')this.emit('next-requested');
     if(message.request_id && this.pending.has(message.request_id)) {
       const pending=this.pending.get(message.request_id);this.pending.delete(message.request_id);
       message.error==='success'?pending.resolve(message.data):pending.reject(new Error('播放器命令失败。'));
     }
     if(message.event==='property-change' && message.data!==undefined) {
+      if(this.loading)return;
+      if(message.name==='eof-reached'&&message.data===false)this.finishedMediaId=null;
+      if(message.name==='eof-reached'&&message.data===true)this.finishEpisode();
+      if(message.name==='time-pos'&&this.finishedMediaId===this.state.mediaId)return;
       const key={'time-pos':'position',duration:'duration',pause:'paused','track-list':'tracks'}[message.name];
       if(key) this.state[key]=message.data;
       this.emit('state',{...this.state});
       if(message.name==='time-pos') this.emit('progress',{...this.state});
     }
     if(message.event==='end-file' && message.reason==='eof') {
-      this.state.position=this.state.duration;this.emit('progress',{...this.state,ended:true});
+      this.finishEpisode();
     }
     if(message.event==='end-file' && message.reason==='error') {
+      this.loadError=true;
       this.state.error='影片播放中断，请检查片源连接或使用兼容解码。';this.emit('state',{...this.state});
     }
+  }
+  finishEpisode(){
+    if(this.loading||!this.state.active||this.finishedMediaId===this.state.mediaId)return;
+    this.finishedMediaId=this.state.mediaId;this.state.position=this.state.duration;
+    this.emit('progress',{...this.state,ended:true});this.emit('ended',{...this.state});
+  }
+  async loadNext(media){
+    const operation=(this.opening||Promise.resolve()).catch(()=>{}).then(async()=>{
+      const child=this.child;if(!child||!this.socket)throw new Error('播放器已关闭。');
+      const previous={...this.state};
+      this.emit('progress',{...this.state,force:true});
+      const serial=this.loadedSerial;this.loading=true;this.loadError=false;
+      this.state={active:true,mediaId:media.id,title:media.title,position:0,duration:media.technical?.durationSeconds||media.duration*60||0,paused:false,tracks:[]};this.emit('state',{...this.state});
+      try{
+        await this.command(['set_property','user-data/luma-osc/media',media]);
+        await this.command(['set_property','force-media-title',media.title]);
+        await this.command(['set_property','title',`Luma · ${media.title}`]);
+        await this.command(['loadfile',media.path,'replace',-1,'start=0,pause=yes']);
+        const deadline=Date.now()+20000;
+        while(this.loadedSerial===serial){if(this.loadError||this.child!==child||child.exitCode!==null||Date.now()>deadline)throw new Error('下一集加载失败。');await new Promise(r=>setTimeout(r,80));}
+        const duration=await this.command(['get_property','duration']);if(duration>0)this.state.duration=duration;
+        this.state.tracks=await this.command(['get_property','track-list']);
+        let output;
+        while(!output?.w){if(this.loadError||this.child!==child||child.exitCode!==null||Date.now()>deadline)throw new Error('下一集未输出画面。');output=await this.command(['get_property','video-out-params']).catch(()=>null);if(!output?.w)await new Promise(r=>setTimeout(r,100));}
+        this.loading=false;await this.command(['set_property','pause',false]);this.state.paused=false;this.emit('state',{...this.state});return this.state;
+      }catch(error){this.loading=false;if(this.child===child&&child.exitCode===null){this.finishedMediaId=previous.mediaId;this.state={...previous,paused:true,error:'下一集未能打开，已停止连播。'};this.emit('state',{...this.state});}throw error;}
+    });this.opening=operation;return operation;
   }
   command(command) {
     if(!this.socket || this.socket.destroyed) return Promise.reject(new Error('播放器未连接。'));

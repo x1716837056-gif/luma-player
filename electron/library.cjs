@@ -7,6 +7,7 @@ const VIDEO_EXTENSIONS = new Set(['.mp4', '.mkv', '.webm', '.mov', '.avi', '.m4v
 const stableId = value => crypto.createHash('sha256').update(value).digest('hex').slice(0, 20);
 
 const { parseRelease } = require('../shared/filename.mjs');
+const { episodeIdentity } = require('../shared/series.mjs');
 function parseFilename(filename) {
   const {title,originalTitle,year,kind,episode}=parseRelease(filename);
   return {title,originalTitle,year,kind,episode};
@@ -32,10 +33,11 @@ async function readNfo(videoPath) {
         const text = value => typeof value === 'string' || typeof value === 'number' ? String(value) : '';
         const values = value => (Array.isArray(value) ? value : value === undefined ? [] : [value]);
         data = {
-          ...(text(node.title) ? { title: text(node.title) } : {}),
+          ...(text(node.title) ? document.episodedetails ? {episodeTitle:text(node.title)} : {title:text(node.title)} : {}),
           ...(text(node.originaltitle) ? { originalTitle: text(node.originaltitle) } : {}),
           ...(Number(node.year) ? { year: Number(node.year) } : {}),
           ...(text(node.plot) ? { description: text(node.plot) } : {}),
+          ...(document.episodedetails&&text(node.plot)?{episodeDescription:text(node.plot)}:{}),
           ...(Number(node.runtime) ? { duration: Number(node.runtime) } : {}),
           ...(Number(node.rating) ? { rating: Number(node.rating).toFixed(1) } : {}),
           ...(text(node.director) ? { director: text(node.director) } : {}),
@@ -43,6 +45,8 @@ async function readNfo(videoPath) {
           ...(node.genre ? { genre: values(node.genre).map(text).filter(Boolean) } : {}),
           ...(node.actor ? { cast: values(node.actor).map(actor => text(actor?.name)).filter(Boolean).slice(0, 8) } : {}),
           ...(document.episodedetails || document.tvshow ? { kind: 'tv' } : {}),
+          ...(document.episodedetails&&text(node.season)!==''&&Number.isInteger(Number(node.season))?{season:Number(node.season)}:{}),
+          ...(document.episodedetails&&text(node.episode)!==''&&Number.isInteger(Number(node.episode))?{episodeNumber:Number(node.episode)}:{}),
         };
         break;
       }
@@ -57,6 +61,22 @@ async function readNfo(videoPath) {
   return data;
 }
 
+async function readSeriesNfo(directory,root,cache){
+  if(cache.has(directory))return cache.get(directory);
+  const work=(async()=>{
+    try{
+      const doc=new XMLParser({ignoreAttributes:false,processEntities:false}).parse(await readSmallFile(path.join(directory,'tvshow.nfo'))),node=doc.tvshow;
+      if(node&&typeof node==='object'){
+        const text=value=>['string','number'].includes(typeof value)?String(value):'';
+        const artwork=await readNfo(path.join(directory,'__series__.mkv'));
+        return {...artwork,kind:'tv',seriesTitle:text(node.title)||text(node.originaltitle),seriesOriginalTitle:text(node.originaltitle)||text(node.title),seriesYear:Number(node.year)||0,seriesDescription:text(node.plot)};
+      }
+    }catch{/* No series sidecar at this level. */}
+    const parent=path.dirname(directory);
+    return directory!==root&&parent!==directory&&path.relative(root,parent)!=='..'&&!path.relative(root,parent).startsWith('..'+path.sep)?readSeriesNfo(parent,root,cache):{};
+  })();cache.set(directory,work);return work;
+}
+
 async function scanFolder(folder, type = 'local') {
   if (typeof folder !== 'string' || !path.isAbsolute(folder)) throw new Error('请选择有效的完整文件夹路径。');
   const root = path.resolve(folder);
@@ -67,6 +87,7 @@ async function scanFolder(folder, type = 'local') {
   const media = [];
   const warnings = [];
   const pending = [root];
+  const seriesCache=new Map();
   while (pending.length) {
     const directory = pending.pop();
     let entries;
@@ -81,11 +102,15 @@ async function scanFolder(folder, type = 'local') {
       const parsed = parseRelease(entry.name);
       const info = await fs.stat(filename).catch(() => null);
       const sidecar = await readNfo(filename);
+      const inherited=await readSeriesNfo(directory,root,seriesCache);
+      const identity=episodeIdentity({...parsed,...inherited,...sidecar,path:filename});
+      const series=identity?{kind:'tv',seriesTitle:inherited.seriesTitle||identity.title,seriesOriginalTitle:inherited.seriesOriginalTitle||identity.originalTitle,seriesYear:identity.year,season:identity.season??undefined,episodeNumber:identity.number??undefined,episode:identity.number!==null?`第 ${identity.season??1} 季 · 第 ${identity.number} 集`:undefined}:{};
       media.push({
         id: stableId(filename.toLowerCase()), ...parsed, genre: [], duration: 0, rating: '', certification: '', poster: '', backdrop: '',
         description: '尚未匹配影片资料。可以在影片详情中手动匹配元数据。',
         fileSize: info?.size, modifiedAt: info?.mtimeMs, sourceId, path: filename, videoUrl: mediaUrl(filename), quality: /2160p|4k/i.test(entry.name) ? '4K' : /1080p/i.test(entry.name) ? '1080P' : /720p/i.test(entry.name) ? '720P' : '本地',
-        addedAt: info?.birthtimeMs || Date.now(), imported: true, ...sidecar, ...(Object.keys(sidecar).some(key => !['poster','backdrop'].includes(key)) ? {metadataOrigin:'nfo',metadataStatus:'matched'} : {}),
+        addedAt: info?.birthtimeMs || Date.now(), imported: true, ...inherited,...sidecar,...series, ...(Object.keys(sidecar).some(key => !['poster','backdrop'].includes(key))||inherited.seriesTitle ? {metadataOrigin:'nfo',metadataStatus:'matched'} : {}),
+        ...(identity?{title:inherited.seriesTitle||identity.title,originalTitle:inherited.seriesOriginalTitle||identity.originalTitle}:{}),
       });
     }
   }

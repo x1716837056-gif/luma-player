@@ -1,5 +1,5 @@
 import {useEffect, useRef, useState, type CSSProperties, type ReactNode} from 'react';
-import {ArrowLeft, AudioLines, Check, Film, LoaderCircle, Maximize, Minimize, Pause, Play, RotateCcw, RotateCw, Subtitles, Volume2, VolumeX, X, Minus} from 'lucide-react';
+import {ArrowLeft, AudioLines, Check, Film, LoaderCircle, Maximize, Minimize, Pause, Play, RotateCcw, RotateCw, Subtitles, Volume2, VolumeX, X, Minus,SkipForward} from 'lucide-react';
 import type {Media} from './types';
 import {MediaContextMenu,MediaInfoDialog,type MediaInfoView} from './MediaActions';
 import {languageName} from './track-label';
@@ -18,7 +18,7 @@ function Control({label, children, onClick, className = '', expanded, backAction
   return <button type="button" className={`cinema-button ${className}`} data-back-control={backAction||undefined} aria-label={label} title={label} aria-expanded={expanded} onClick={onClick}>{children}</button>;
 }
 
-export function PlayerModal({media, demo, onClose, onProgress}: {media: Media; demo: boolean; onClose: () => void; onProgress: (progress: number, minutes: number) => void}) {
+export function PlayerModal({media, demo, onClose, onProgress,onEnded,onNext}: {media: Media; demo: boolean; onClose: () => void; onProgress: (progress: number, minutes: number) => void;onEnded?:()=>void;onNext?:()=>void}) {
   const video = useRef<HTMLVideoElement>(null), container = useRef<HTMLDivElement>(null), picker = useRef<HTMLInputElement>(null);
   const [paused, setPaused] = useState(false), [elapsed, setElapsed] = useState(0), [length, setLength] = useState(0);
   const [volume, setVolume] = useState(.8), [speed, setSpeed] = useState(1), [fullscreen, setFullscreen] = useState(false);
@@ -29,6 +29,7 @@ export function PlayerModal({media, demo, onClose, onProgress}: {media: Media; d
   const [error, setError] = useState(''), [loading, setLoading] = useState(true), [switching, setSwitching] = useState(false);
   const [preview, setPreview] = useState<{percent: number; seconds: number} | null>(null);
   const lastSave = useRef(0), lastVolume = useRef(.8), lastActivity = useRef(Date.now()), hovering = useRef(false), fallback = useRef(false), disposed = useRef(false);
+  const playbackRecord=useRef({progress:media.progress||0,minutes:media.duration,seen:false});
   const src = demo ? window.__LUMA_ASSETS?.['./demo.mp4'] || './demo.mp4' : media.videoUrl || (media.path ? `luma-media://local/${encodeURIComponent(media.path)}` : '');
   const controlsShown=Boolean(visible||paused||error||loading||menu||contextMenu||info);
   useSubtitleSafeArea(video,controlsShown,subtitle);
@@ -53,14 +54,16 @@ export function PlayerModal({media, demo, onClose, onProgress}: {media: Media; d
   }
   useEffect(() => {
     disposed.current = false; container.current?.focus();
+    const record={progress:media.progress||0,minutes:media.duration,seen:false};playbackRecord.current=record;
+    setElapsed(0);setLength(0);setPaused(false);setLoading(true);setError('');setSwitching(false);setMenu(null);setContextMenu(null);setInfo(null);setSubtitle('');setSubtitleName('');setAudioTracks([]);fallback.current=false;lastSave.current=0;reveal();
     const player = video.current;
-    if (player && !player.getAttribute('src')) { player.src = src; void player.play().catch(() => {}); }
+    if (player) { player.src = src;player.playbackRate=speed;void player.play().catch(() => {}); }
     return () => {
       disposed.current = true;
-      if (!demo && player && Number.isFinite(player.duration) && player.duration > 0) onProgress(player.currentTime / player.duration, player.duration / 60);
+      if (!demo && record.seen && record.minutes>0) onProgress(record.progress,record.minutes);
       if (player) { player.pause(); player.removeAttribute('src'); player.load(); }
     };
-  }, []);
+  }, [media.id]);
   useEffect(() => {
     const timer = setInterval(() => {
       if (!paused && !loading && !error && !menu && !contextMenu && !info && !hovering.current && !container.current?.querySelector('.cinema-dock :focus-visible, .cinema-heading :focus-visible') && Date.now() - lastActivity.current > 2800) setVisible(false);
@@ -111,8 +114,8 @@ export function PlayerModal({media, demo, onClose, onProgress}: {media: Media; d
     <video ref={video} src={src} autoPlay playsInline onClick={toggle} onDoubleClick={toggleFullscreen}
       onPlay={() => { setPaused(false); reveal(); }} onPlaying={() => setLoading(false)} onWaiting={() => setLoading(true)} onPause={() => setPaused(true)} onError={() => void unsupported()}
       onLoadedMetadata={() => { readAudioTracks(); const p = video.current!; setLength(Number.isFinite(p.duration) ? p.duration : 0); p.volume = volume; if (!demo && media.progress && media.progress < .96) p.currentTime = p.duration * media.progress; }}
-      onTimeUpdate={() => { const p = video.current!; setElapsed(p.currentTime); if (!demo && p.duration > 0 && Date.now() - lastSave.current > 5000) { lastSave.current = Date.now(); onProgress(p.currentTime / p.duration, p.duration / 60); } }}
-      onEnded={() => { setPaused(true); setLoading(false); reveal(); if (!demo) onProgress(1, length / 60); }}>
+      onTimeUpdate={() => { const p = video.current!; setElapsed(p.currentTime);if(p.duration>0)Object.assign(playbackRecord.current,{progress:p.currentTime/p.duration,minutes:p.duration/60,seen:true}); if (!demo && p.duration > 0 && Date.now() - lastSave.current > 5000) { lastSave.current = Date.now(); onProgress(p.currentTime / p.duration, p.duration / 60); } }}
+      onEnded={() => { setPaused(true); setLoading(false); reveal();Object.assign(playbackRecord.current,{progress:1,minutes:length/60,seen:true}); if (!demo) onProgress(1, length / 60);onEnded?.(); }}>
       {subtitle && <track key={subtitle} kind="subtitles" src={subtitle} srcLang="und" label={subtitleName} default onLoad={() => { if (video.current?.textTracks[0]) video.current.textTracks[0].mode = subtitleEnabled ? 'showing' : 'disabled'; }} />}
     </video>
     <div className="cinema-shade" />
@@ -128,7 +131,7 @@ export function PlayerModal({media, demo, onClose, onProgress}: {media: Media; d
         {preview && <span className="cinema-seek-preview" style={{left: `${preview.percent}%`}}>{playbackTime(preview.seconds)}</span>}
         <input className="cinema-range" aria-label="播放进度" type="range" min="0" max={length || 1} step=".1" value={Math.min(elapsed, length || 1)} style={rangeStyle(elapsed, length)} onChange={e => seek(+e.target.value)} />
       </div>
-      <div className="cinema-timestamps"><span>{playbackTime(elapsed)}</span><span>{paused ? '已暂停' : media.episode || ''}</span><span>−{playbackTime(length - elapsed)}</span></div>
+      <div className="cinema-timestamps"><span>{playbackTime(elapsed)}</span><span>{onNext?<button className="cinema-next-episode" onClick={onNext} aria-label="播放下一集"><SkipForward size={12}/>下一集</button>:paused ? '已暂停' : media.episode || ''}</span><span>−{playbackTime(length - elapsed)}</span></div>
       <div className="cinema-dock-row">
         <div className="cinema-volume"><Control label={volume ? '静音' : '取消静音'} onClick={() => changeVolume(volume ? 0 : lastVolume.current)}>{volume ? <Volume2 size={19} /> : <VolumeX size={19} />}</Control><input className="cinema-range" aria-label="音量" type="range" min="0" max="1" step=".01" value={volume} style={rangeStyle(volume, 1)} onChange={e => changeVolume(+e.target.value)} /></div>
         <div className="cinema-transport"><Control label="后退 10 秒" onClick={() => seek(elapsed - 10)} className="cinema-skip"><RotateCcw size={26} /><span>10</span></Control><Control label={paused ? '播放' : '暂停'} onClick={toggle} className="cinema-toggle">{paused ? <Play size={27} fill="currentColor" /> : <Pause size={27} fill="currentColor" />}</Control><Control label="前进 10 秒" onClick={() => seek(elapsed + 10)} className="cinema-skip"><RotateCw size={26} /><span>10</span></Control></div>

@@ -14,7 +14,7 @@ contextBridge.exposeInMainWorld('desktop', {
   selectFolder: () => ipcRenderer.invoke('source:select'),
   scanFolder: (folder, type) => ipcRenderer.invoke('source:scan', folder, type),
   scrape: (media, query, kind) => ipcRenderer.invoke('metadata:search', media, query, kind),
-  playMpv: media => ipcRenderer.invoke('player:mpv', media),
+  playMpv: (media,restart=false) => ipcRenderer.invoke('player:mpv', media,restart===true),
   updateMedia: (id, patch) => ipcRenderer.invoke('library:patch', id, patch),
   applyMetadata: (id, candidate) => ipcRenderer.invoke('metadata:apply', id, candidate),
   probeMedia: id => ipcRenderer.invoke('media:probe', id),

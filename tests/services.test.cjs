@@ -10,6 +10,19 @@ const {cacheArtwork}=require('../electron/metadata.cjs');
 async function temporary(t) {const root=await fs.mkdtemp(path.join(os.tmpdir(),'luma-services-'));t.after(()=>fs.rm(root,{recursive:true,force:true}));return root;}
 async function until(check,timeout=12000) {const deadline=Date.now()+timeout;while(!check()){if(Date.now()>deadline)throw new Error('Timed out waiting for expected state');await delay(100);}}
 const media={id:'movie',path:'D:/Movies/Dune.mkv',sourceId:'local',title:'Dune',originalTitle:'Dune',kind:'movie',year:2021,genre:[],description:'',duration:1,poster:'',backdrop:'',quality:'4K',rating:'',certification:'',addedAt:1,technical:{durationSeconds:60},imported:true};
+
+test('matching a TV show updates its episodes together without overwriting episode identity, runtime or progress',async t=>{
+  const directory=await temporary(t),db=openLibraryDatabase(directory);
+  const first={...media,id:'ep1',kind:'tv',seriesTitle:'A Show',title:'A Show',originalTitle:'A Show',season:1,episodeNumber:1,episodeTitle:'Pilot',episodeDescription:'First plot',path:'D:/A Show/S01E01.mkv',progress:.3,favorite:true};
+  const second={...first,id:'ep2',season:2,episodeNumber:1,episodeTitle:'Next season',path:'D:/A Show/S02E01.mkv',progress:.6,watched:true,duration:2,technical:{durationSeconds:120}};
+  const other={...first,id:'other',seriesTitle:'Other Show',title:'Other Show',originalTitle:'Other Show',path:'D:/Other Show/S01E01.mkv'};
+  db.save({demo:false,media:[first,second,other],sources:[]});
+  const fetcher=async()=>new Response(JSON.stringify({id:42,name:'测试剧集',original_name:'A Show',first_air_date:'2021-01-01',overview:'Series plot',genres:[],credits:{cast:[],crew:[]},content_ratings:{results:[]}}));
+  const service=new LibraryService({database:db,directory,getSettings:()=>({tmdbToken:'test',watchFolders:false}),notify(){},authorize(){},fetcher});await service.init();
+  await service.match('ep1',{tmdbId:42,kind:'tv'});const [a,b,c]=service.library.media;
+  assert.equal(a.seriesTitle,'测试剧集');assert.equal(b.tmdbId,42);assert.equal(a.progress,.3);assert.equal(b.progress,.6);assert.equal(b.watched,true);assert.equal(a.favorite,true);assert.equal(b.season,2);assert.equal(b.episodeTitle,'Next season');assert.equal(b.duration,2);assert.equal(a.episodeDescription,'First plot');assert.equal(c.tmdbId,undefined);
+  await service.close();db.close();
+});
 test('SQLite migrates legacy JSON once, retains original backup, and survives reopen',async t=>{
   const directory=await temporary(t);
   const legacy={demo:false,media:[{...media,favorite:true,progress:.42}],sources:[]};

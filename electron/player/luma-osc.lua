@@ -170,6 +170,7 @@ local function menu_rows()
         rows[#rows+1]={label='片源信息',click=function()menu='source';page=0 end}
         rows[#rows+1]={label='画面异常？使用兼容解码',click=function() mp.set_property('hwdec','no');menu=nil;mp.osd_message('已切换兼容解码',2) end}
         rows[#rows+1]={label='画面与 HDR',click=function()menu='color';page=0 end}
+        if prop('user-data/luma-osc/next-title','')~='' then rows[#rows+1]={label='播放下一集',click=function()menu=nil;mp.commandv('script-message','luma-next-episode')end} end
     elseif menu=='color' then
         local trc=prop('target-trc','auto')
         rows[#rows+1]={label='自动适配屏幕',selected=trc=='auto',click=function()set_output('auto')end}
@@ -356,6 +357,7 @@ end)
 mp.add_key_binding('SPACE','luma-pause',function()mp.commandv('cycle','pause');activity()end)
 mp.add_key_binding('LEFT','luma-back',function()mp.commandv('seek',-10,'relative+exact');activity()end,{repeatable=true})
 mp.add_key_binding('RIGHT','luma-forward',function()mp.commandv('seek',10,'relative+exact');activity()end,{repeatable=true})
+mp.add_key_binding('N','luma-next-episode',function()if prop('user-data/luma-osc/next-title','')~='' then mp.commandv('script-message','luma-next-episode') end end)
 mp.add_forced_key_binding('ESC','luma-escape',back)
 mp.add_key_binding('Alt+LEFT','luma-go-back',back)
 mp.add_key_binding('MBTN_LEFT','luma-background-click',function()if menu then menu=nil else mp.commandv('cycle','pause') end;activity()end)

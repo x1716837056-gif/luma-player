@@ -1,0 +1,11 @@
+import type {Media} from '../src/types';
+export type SeriesEpisode={id:string;number:number|null;media:Media[]};
+export type SeriesSeason={number:number|null;episodes:SeriesEpisode[]};
+export type SeriesGroup={id:string;title:string;originalTitle:string;year:number;media:Media[];seasons:SeriesSeason[];episodeCount:number;representative:Media};
+export function episodeIdentity(media:Partial<Media>):{title:string;originalTitle:string;year:number;season:number|null;number:number|null;tmdb:number|null;aliases:string[];key:string}|null;
+export function groupSeries(items:Media[]):SeriesGroup[];
+export function seriesFor(items:Media[],id:string,groups?:SeriesGroup[]):SeriesGroup|undefined;
+export function resumeEpisode(series:SeriesGroup):Media|undefined;
+export function preferredVersion(episode:SeriesEpisode,sourceId?:string):Media;
+export function nextEpisode(items:Media[],current:Media,groups?:SeriesGroup[]):{media:Media|null;reason:string};
+export function libraryEntries(items:Media[]):{id:string;media:Media;series?:SeriesGroup}[];

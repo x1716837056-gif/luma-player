@@ -4,7 +4,7 @@ import { filenameParse } from '@ctrl/video-filename-parser';
 export function parseRelease(filename) {
   const stem = filename.replace(/^.*[\\/]/, '').replace(/\.[^.]+$/, '');
   const clean = stem.replace(/^(?:(?:\[[^\]]*\]|【[^】]*】)\s*)+/, '').trim() || stem;
-  const episode = clean.match(/(?:^|[.\s_-])S(\d{1,2})[. _-]*E(\d{1,3})(?=[.\s_-]|$)/i);
+  const episode = clean.match(/(?:^|[.\s_-])S(\d{1,2})[. _-]*E(\d{1,3})(?=[.\s_-]|$)/i)||clean.match(/(?:^|[.\s_-])(\d{1,2})x(\d{1,3})(?=[.\s_-]|$)/i)||clean.match(/第(\d{1,2})季[ ._-]*第?(\d{1,3})集/);
   const parsed = filenameParse(clean, Boolean(episode || /\d+x\d+/i.test(clean)));
   const years = [...clean.matchAll(/(?:^|[.\s_([])((?:19|20)\d{2})(?=[.\s_)\]]|$)/g)]
     .filter(m => +m[1] <= new Date().getFullYear() + 2);
@@ -19,7 +19,7 @@ export function parseRelease(filename) {
   return {
     title, originalTitle: title, year: year ? +year[1] : Number(parsed.year) || 0,
     kind: episodeNumber !== undefined ? 'tv' : 'movie',
-    episode: episodeNumber !== undefined ? `第 ${season || 1} 季 · 第 ${episodeNumber} 集` : undefined,
+    episode: episodeNumber !== undefined ? `第 ${season ?? 1} 季 · 第 ${episodeNumber} 集` : undefined,
     season, episodeNumber,
     release: { resolution: parsed.resolution, videoCodec: parsed.videoCodec, audioCodec: parsed.audioCodec, source: parsed.sources?.join(' / ') },
   };

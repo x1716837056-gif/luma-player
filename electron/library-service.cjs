@@ -2,10 +2,14 @@ const path=require('node:path');
 const { scanFolder }=require('./library.cjs');
 const { probeMedia }=require('./probe.cjs');
 const { searchMetadata, resolveMetadata, cacheArtwork, confidence, refreshCertification }=require('./metadata.cjs');
+const {seriesFor,episodeIdentity}=require('../shared/series.mjs');
 class LibraryService {
   constructor({database,directory,getSettings,notify,authorize,fetcher=fetch}) {
     this.db=database;this.directory=directory;this.getSettings=getSettings;this.notify=notify;this.authorize=authorize;this.fetcher=fetcher;
     this.library=database.load();this.watchers=new Map();this.debounce=new Map();this.scans=new Map();
+    let hydrated=false;
+    for(const media of this.library?.media||[]){const identity=episodeIdentity(media);if(!identity||media.seriesTitle)continue;Object.assign(media,{kind:'tv',seriesTitle:identity.title,seriesOriginalTitle:identity.originalTitle,seriesYear:identity.year,season:media.season??identity.season??undefined,episodeNumber:media.episodeNumber??identity.number??undefined,episode:media.episode||(identity.number!==null?`第 ${identity.season??1} 季 · 第 ${identity.number} 集`:undefined)});if(!media.metadataOrigin&&!media.tmdbId){media.title=identity.title;media.originalTitle=identity.originalTitle;}hydrated=true;}
+    if(hydrated)database.save(this.library);
     this.jobs=new Set();this.stats={running:false,completed:0,matched:0,review:0,failed:0,total:0,queued:0};this.controller=new AbortController();
   }
   async init({watchFolders=true}={}) {
@@ -38,6 +42,7 @@ class LibraryService {
     const fresh=result.media.map(m=>{
       const old=existing.get(m.path.toLowerCase());
       return old?{...m,...old,missing:false,videoUrl:m.videoUrl,fileSize:m.fileSize,modifiedAt:m.modifiedAt,
+        seriesTitle:old.seriesTitle||m.seriesTitle,seriesOriginalTitle:old.seriesOriginalTitle||m.seriesOriginalTitle,seriesYear:old.seriesYear||m.seriesYear,season:old.season??m.season,episodeNumber:old.episodeNumber??m.episodeNumber,episode:old.episode||m.episode,
         // A changed file needs a fresh probe, but keeps user metadata and viewing history.
         technical:old.fileSize===m.fileSize && old.modifiedAt===m.modifiedAt?old.technical:undefined}:m;
     });
@@ -98,10 +103,17 @@ class LibraryService {
   async match(id,candidate) {
     const media=this.library?.media.find(m=>m.id===id);
     if(!media || !Number.isInteger(candidate.tmdbId)||!['movie','tv'].includes(candidate.kind))throw new Error('请选择有效的影片。');
+    const series=media.kind==='tv'?seriesFor(this.library.media,id):null;
     const prefs=this.getSettings();
     const details=await this.tmdbQueue.add(()=>resolveMetadata(media,candidate,prefs.tmdbToken,prefs.metadataLanguage,this.fetcher));
     const cached=await cacheArtwork(details,path.join(this.directory,'artwork'),this.fetcher);
     const {id:unused,path:filename,sourceId,videoUrl,progress,favorite,watched,...patch}=cached;
+    if(series&&candidate.kind==='tv'){
+      const fields=['title','originalTitle','seriesTitle','seriesOriginalTitle','seriesYear','seriesDescription','tmdbId','year','description','poster','backdrop','genre','rating','certification','certificationRegion','minimumAge','certificationCheckedAt','cast','director','metadataStatus','metadataError'];
+      const seriesPatch=Object.fromEntries(fields.filter(key=>patch[key]!==undefined).map(key=>[key,patch[key]]));
+      for(const episode of series.media)Object.assign(episode,seriesPatch,{metadataOrigin:'manual'});
+      this.save();return this.library.media.find(m=>m.id===id);
+    }
     return this.patch(id,{...patch,metadataOrigin:'manual'});
   }
   async syncWatchers() {

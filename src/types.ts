@@ -32,6 +32,13 @@ export type Media = {
   imported?: boolean;
   season?: number;
   episodeNumber?: number;
+  seriesTitle?: string;
+  seriesOriginalTitle?: string;
+  seriesYear?: number;
+  seriesDescription?: string;
+  episodeTitle?: string;
+  episodeDescription?: string;
+  lastPlayedAt?: number;
   missing?: boolean;
   metadataOrigin?: 'nfo' | 'tmdb' | 'manual';
   metadataStatus?: 'matched' | 'needs-token' | 'review' | 'failed';
@@ -53,7 +60,7 @@ export type ColorMapping = {output:'auto'|'sdr'|'hdr';curve:'auto'|'spline'|'bt.
 export type Settings = { theme: 'dark' | 'light'; tmdbToken: string; metadataLanguage: string; autoplay: boolean; defaultPlayer: 'auto' | 'native' | 'mpv'; mpvPath: string; autoScrape: boolean; watchFolders: boolean; colorMapping?:ColorMapping; };
 export type ScanResult = { media: Media[]; source: Source; warnings: string[] };
 export type TaskStatus = { running: boolean; completed: number; total: number; matched: number; review: number; failed: number; queued: number; active?: number };
-export type PlayerState = { active: boolean; error?: string; mediaId?: string; title?: string; position?: number; duration?: number; paused?: boolean; tracks?: {id: number; type: string; title?: string; lang?: string; selected?: boolean}[] };
+export type PlayerState = { active: boolean; error?: string; notice?:string; mediaId?: string; title?: string; position?: number; duration?: number; paused?: boolean; tracks?: {id: number; type: string; title?: string; lang?: string; selected?: boolean}[] };
 
 declare global {
   interface Window {
@@ -67,7 +74,7 @@ declare global {
       selectFolder(): Promise<string | null>;
       scanFolder(path: string, type: Source['type']): Promise<ScanResult>;
       scrape(media: Media, query: string, kind: Media['kind']): Promise<Media[]>;
-      playMpv(media: Media): Promise<PlayerState>;
+      playMpv(media: Media,restart?:boolean): Promise<PlayerState>;
       updateMedia(id: string, patch: Partial<Media>): Promise<Media>;
       applyMetadata(id: string, candidate: Media): Promise<Media>;
       probeMedia(id: string): Promise<Media>;
@@ -75,7 +82,7 @@ declare global {
       cancelTasks(): Promise<void>;
       taskStatus(): Promise<TaskStatus>;
       playerState(): Promise<PlayerState>;
-      playerControl(action: 'pause' | 'seek' | 'aid' | 'sid' | 'stop', value?: number | boolean | 'no'): Promise<void>;
+      playerControl(action: 'pause' | 'seek' | 'aid' | 'sid' | 'stop' | 'next', value?: number | boolean | 'no'): Promise<void>;
       onLibraryChanged(callback: (library: Library) => void): () => void;
       onTasksChanged(callback: (status: TaskStatus) => void): () => void;
       onPlayerChanged(callback: (state: PlayerState) => void): () => void;

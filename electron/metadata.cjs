@@ -26,6 +26,7 @@ function client(token, fetcher=fetch, signal) {
 }
 function basic(media,r,kind) {
   return {...media,tmdbId:r.id,kind,title:r.title||r.name,originalTitle:r.original_title||r.original_name,
+    ...(kind==='tv'?{seriesTitle:r.name,seriesOriginalTitle:r.original_name,seriesYear:Number((r.first_air_date||'').slice(0,4)),seriesDescription:r.overview||''}:{}),
     year:Number((r.release_date||r.first_air_date||'').slice(0,4)),description:r.overview||'暂无中文简介。',
     rating:Number(r.vote_average||0).toFixed(1),
     poster:r.poster_path?`https://image.tmdb.org/t/p/w500${r.poster_path}`:'',

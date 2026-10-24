@@ -11,6 +11,7 @@ const { LibraryService } = require('./library-service.cjs');
 const { MpvPlayer } = require('./mpv.cjs');
 const { probeMedia,toolPath } = require('./probe.cjs');
 const { normalizeColorMapping } = require('./color-mapping.cjs');
+const {EpisodePlayback}=require('./episode-playback.cjs');
 
 protocol.registerSchemesAsPrivileged([{ scheme: 'luma-media', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true } }]);
 let window;
@@ -23,6 +24,7 @@ let backgroundWork=Promise.resolve();
 const player=new MpvPlayer();
 const networkFetch=(url,options)=>net.fetch(String(url),options);
 let settings = {};
+let episodePlayback;
 let saveQueue = Promise.resolve();
 const allowedFiles = new Set();
 const normalize = filename => path.resolve(filename).toLowerCase();
@@ -48,7 +50,7 @@ async function writeJson(name, value) {
   return saveQueue;
 }
 
-function notify(channel,payload) { if(window && !window.isDestroyed())window.webContents.send(channel,payload); }
+function notify(channel,payload) { if(window && !window.isDestroyed())window.webContents.send(channel,payload);if(channel==='library:changed'&&episodePlayback)void episodePlayback.refresh(); }
 function currentMedia(id) {
   const media=service.library?.media.find(m=>m.id===id);
   if(!media)throw new Error('影片未加入影音库。');
@@ -75,7 +77,7 @@ function wireIpc() {
     const media=currentMedia(id);
     const safe={};
     for(const key of ['favorite','watched'])if(typeof patch[key]==='boolean')safe[key]=patch[key];
-    if(Number.isFinite(patch.progress))safe.progress=Math.min(1,Math.max(0,patch.progress));
+    if(Number.isFinite(patch.progress)){safe.progress=Math.min(1,Math.max(0,patch.progress));safe.lastPlayedAt=Date.now();}
     if(Number.isFinite(patch.duration)&&patch.duration>0)safe.duration=media.technical?.durationSeconds ? media.technical.durationSeconds/60 : patch.duration;
     return service.patch(id,safe);
   });
@@ -83,6 +85,7 @@ function wireIpc() {
   ipcMain.handle('settings:save',async (_,next)=>{
     if(!next || typeof next.tmdbToken!=='string' || typeof next.mpvPath!=='string' || !['auto','native','mpv'].includes(next.defaultPlayer))throw new Error('设置格式无效。');
     next={...next,colorMapping:normalizeColorMapping(next.colorMapping)};
+    next.autoplay=next.autoplay!==false;
     const previous=settings;
     const persisted={...next,theme:next.theme==='light'?'light':'dark'};
     if(next.tmdbToken && safeStorage.isEncryptionAvailable()){persisted.encryptedToken=safeStorage.encryptString(next.tmdbToken).toString('base64');delete persisted.tmdbToken;}
@@ -102,7 +105,7 @@ function wireIpc() {
   ipcMain.handle('tasks:cancel',()=>service.cancel());
   ipcMain.handle('tasks:status',()=>service.status());
   ipcMain.handle('player:state',()=>player.state);
-  ipcMain.handle('player:control',(_,action,value)=>player.control(action,value));
+  ipcMain.handle('player:control',(_,action,value)=>{if(action==='next')return episodePlayback.advance(false);if(action==='stop')episodePlayback.cancel();return player.control(action,value);});
   ipcMain.handle('media:probe',async (_,id)=>{
     const media=currentMedia(id);return service.patch(id,await probeMedia(media.path));
   });
@@ -110,13 +113,13 @@ function wireIpc() {
     if(typeof filename!=='string' || !allowedFiles.has(normalize(filename)))throw new Error('文件未加入影音库。');
     shell.showItemInFolder(filename);
   });
-  ipcMain.handle('player:mpv',async (_,media)=>{
+  ipcMain.handle('player:mpv',async (_,media,restart)=>{
     const actual=currentMedia(media.id);
     if(!actual.path || !allowedFiles.has(normalize(actual.path)))throw new Error('请先导入本地影片。');
     try { await fsp.access(actual.path,fs.constants.R_OK); } catch { throw new Error('影片文件暂时无法读取，请检查硬盘或 NAS 连接。'); }
     const executable=toolPath('mpv',settings.mpvPath);
     if(!executable)throw new Error('未找到 mpv，请在播放设置中指定 mpv.exe。');
-    return player.start(executable,actual,{colorMapping:settings.colorMapping,audioOutput:process.env.LUMA_TEST_AUDIO_OUTPUT==='null'?'null':undefined});
+    return episodePlayback.open(executable,restart===true?{...actual,progress:0}:actual,{colorMapping:settings.colorMapping,audioOutput:process.env.LUMA_TEST_AUDIO_OUTPUT==='null'?'null':undefined});
   });
   ipcMain.on('window:action',(_,action)=>{
     if(action==='minimize')window.minimize();
@@ -165,7 +168,7 @@ else {
   app.on('second-instance', () => { if (window) { if (window.isMinimized()) window.restore(); window.focus(); } });
   app.whenReady().then(async () => {
 
-    settings = {tmdbToken:'',metadataLanguage:'zh-CN',defaultPlayer:'auto',mpvPath:'',autoScrape:true,watchFolders:true,...await readJson('settings.json', {})};
+    settings = {tmdbToken:'',metadataLanguage:'zh-CN',defaultPlayer:'auto',mpvPath:'',autoplay:true,autoScrape:true,watchFolders:true,...await readJson('settings.json', {})};
     if(closing)return;
     if (settings.encryptedToken) { try { settings.tmdbToken = safeStorage.decryptString(Buffer.from(settings.encryptedToken, 'base64')); } catch { settings.tmdbToken = ''; } delete settings.encryptedToken; }
     database=openLibraryDatabase(app.getPath('userData'));
@@ -180,8 +183,9 @@ else {
       if(!state.mediaId || !(state.duration>0))return;
       if(!state.ended && !state.force && Date.now()-lastProgress<2000)return;
       lastProgress=Date.now();
-      service.patch(state.mediaId,{progress:Math.min(1,state.position/state.duration),duration:state.duration/60,...(state.ended?{watched:true}:{})});
+      service.patch(state.mediaId,{progress:Math.min(1,state.position/state.duration),duration:state.duration/60,lastPlayedAt:Date.now(),...(state.ended?{watched:true}:{})});
     });
+    episodePlayback=new EpisodePlayback({player,getMedia:()=>service.library?.media||[],getSettings:()=>({...settings,autoplay:!closing&&settings.autoplay!==false}),readable:async media=>{if(!media.path||!allowedFiles.has(normalize(media.path)))throw new Error('片源未授权。');await fsp.access(media.path,fs.constants.R_OK);},notice:message=>notify('player:changed',{...player.state,notice:message})});
     protocol.handle('luma-media', serveLocalMedia);
     wireIpc();
     await createWindow();
@@ -189,6 +193,7 @@ else {
   app.on('before-quit',event=>{
     if(closing)return;event.preventDefault();closing=true;
     clearTimeout(backgroundTimer);
+    episodePlayback?.cancel();
     Promise.all([player.stop(),backgroundWork.then(()=>service?.close())]).finally(()=>{database?.close();app.quit();});
   });
   app.on('window-all-closed', () => app.quit());
