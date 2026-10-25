@@ -18,6 +18,7 @@ function probeMedia(filename, executable=toolPath('ffprobe'), signal) {
         const seconds=Number(data.format?.duration || video?.duration) || 0;
         const tracks=(data.streams||[]).filter(s=>['audio','subtitle'].includes(s.codec_type)).map(s=>({
           index:s.index,type:s.codec_type,codec:s.codec_name,language:s.tags?.language||'',title:s.tags?.title||'',channels:s.channels,
+          codecProfile:s.profile,channelLayout:s.channel_layout,sampleRate:Number(s.sample_rate)||undefined,bitDepth:Number(s.bits_per_raw_sample||s.bits_per_sample)||undefined,
         }));
         resolve({duration:seconds/60,quality:video?.width>=3800?'4K':video?.height>=1000?'1080P':video?.height>=700?'720P':'本地',
           technical:{container:data.format?.format_name,videoCodec:video?.codec_name,width:video?.width,height:video?.height,

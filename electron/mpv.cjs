@@ -5,20 +5,22 @@ const { EventEmitter } = require('node:events');
 const fs = require('node:fs');
 const path = require('node:path');
 const {colorArguments}=require('./color-mapping.cjs');
+const {audioArguments}=require('./audio-output.cjs');
+const {AudioMonitor}=require('./audio-monitor.cjs');
 
 class MpvPlayer extends EventEmitter {
   constructor() { super(); this.state={active:false}; this.pending=new Map(); this.sequence=0;this.loadedSerial=0; }
   async start(executable,media,options={}) {
     const operation=(this.opening||Promise.resolve()).catch(()=>{}).then(async()=>{
       try { return await this.open(executable,media,options); }
-      catch(error) { this.socket?.destroy();this.child?.kill();this.socket=null;this.child=null;this.state={active:false};this.emit('state',this.state);throw error; }
+      catch(error) { this.audioMonitor?.stop();this.socket?.destroy();this.child?.kill();this.socket=null;this.child=null;this.state={active:false};this.emit('state',this.state);throw error; }
     });
     this.opening=operation;
     return operation;
   }
   async open(executable,media,options={}) {
     await this.stop();
-    this.loading=false;this.finishedMediaId=null;
+    this.loading=false;this.audioReady=false;this.finishedMediaId=null;
     const pipe=process.platform==='win32'?`\\\\.\\pipe\\luma-${crypto.randomUUID()}`:`/tmp/luma-${crypto.randomUUID()}`;
     const seconds=media.technical?.durationSeconds || media.duration*60 || 0;
     const script=[process.resourcesPath && path.join(process.resourcesPath,'player/luma-osc.lua'),path.join(__dirname,'player/luma-osc.lua')].filter(Boolean).find(file=>fs.existsSync(file));
@@ -27,10 +29,10 @@ class MpvPlayer extends EventEmitter {
     const args=['--no-config','--no-terminal','--force-window=yes','--keep-open=no','--hwdec=auto-copy','--osc=no','--osd-bar=no',`--script=${script}`,'--autofit=85%x85%',`--input-ipc-server=${pipe}`,`--title=Luma · ${media.title}`,`--force-media-title=${media.title}`];
     if(process.platform==='win32')args.push('--vo=gpu-next','--gpu-api=d3d11','--title-bar=no','--window-corners=round');
     args.push(...colorArguments(options.colorMapping));
+    args.push(...audioArguments(options.audioSettings,{testNull:options.audioOutput==='null'}));
+    this.audioMonitor=new AudioMonitor(this,options.audioSettings,{testNull:options.audioOutput==='null',technical:media.technical});
     if(options.episodeChain)args.push('--keep-open=yes');
     if(options.mute)args.push('--mute=yes');
-    // Allows control tests to run on machines without an audio endpoint.
-    if(options.audioOutput==='null')args.push('--ao=null');
     if (media.progress>0 && media.progress<.96 && seconds>0) args.push(`--start=${media.progress*seconds}`);
     const child=spawn(executable,[...args,'--',media.path],{stdio:'ignore',windowsHide:true,shell:false});
     this.child=child;
@@ -38,6 +40,7 @@ class MpvPlayer extends EventEmitter {
     child.on('error',error=>{spawnError=error;});
     child.once('exit',()=>{
       if(this.child!==child) return;
+      this.audioMonitor?.stop();
       this.emit('progress',{...this.state,force:true});
       this.socket?.destroy(); this.socket=null; this.child=null;
       this.state={active:false}; this.emit('state',this.state);
@@ -53,7 +56,11 @@ class MpvPlayer extends EventEmitter {
     this.socket.setEncoding('utf8');
     let buffer='';
     this.socket.on('error',()=>{});
-    this.socket.on('close',()=>{for(const p of this.pending.values())p.reject(new Error('播放器连接已关闭。'));this.pending.clear();});
+    this.socket.on('close',()=>{
+      for(const p of this.pending.values())p.reject(new Error('播放器连接已关闭。'));this.pending.clear();
+      // Normal window close/quit also closes IPC; only a live, otherwise-unowned process is an error.
+      const timer=setTimeout(()=>{if(this.child!==child||child.exitCode!==null||this.stopping)return;this.audioMonitor?.stop();this.emit('progress',{...this.state,force:true});this.child=null;this.socket=null;child.kill();this.state={active:false,error:'播放控制连接中断，请重新打开影片。'};this.emit('state',this.state);},200);timer.unref?.();
+    });
     this.socket.on('data',chunk=>{
       buffer+=chunk.toString('utf8');
       let index;
@@ -67,6 +74,7 @@ class MpvPlayer extends EventEmitter {
       director:media.director,cast:media.cast,genre:media.genre,path:media.displayPath||media.path,fileSize:media.fileSize,technical:media.technical,
     }]);
     for(const [i,property] of ['time-pos','duration','pause','track-list','eof-reached'].entries()) await this.command(['observe_property',i+1,property]);
+    await this.audioMonitor.observe();
     // A connected IPC pipe alone does not prove the decoder produced video.
     let output;
     for(let attempt=0;attempt<60;attempt++) {
@@ -77,12 +85,16 @@ class MpvPlayer extends EventEmitter {
       await new Promise(r=>setTimeout(r,250));
     }
     if(!output?.w)throw new Error('没有收到视频画面，请检查片源连接或尝试其他影片。');
+    this.audioReady=true;this.audioMonitor.started=Date.now();await this.audioMonitor.refresh();
     this.emit('state',this.state);
     return this.state;
   }
   message(message) {
+    this.audioMonitor?.changed(message);
     if(message.event==='file-loaded'){this.loadedSerial++;this.emit('file-loaded');}
     if(message.event==='client-message'&&message.args?.[0]==='luma-next-episode')this.emit('next-requested');
+    if(message.event==='client-message'&&message.args?.[0]==='luma-audio-recover')void this.audioMonitor?.recover().catch(()=>{});
+    if(message.event==='client-message'&&message.args?.[0]==='luma-audio-default')void this.audioMonitor?.recover(true).catch(()=>{});
     if(message.request_id && this.pending.has(message.request_id)) {
       const pending=this.pending.get(message.request_id);this.pending.delete(message.request_id);
       message.error==='success'?pending.resolve(message.data):pending.reject(new Error('播放器命令失败。'));
@@ -116,6 +128,7 @@ class MpvPlayer extends EventEmitter {
       const previous={...this.state};
       this.emit('progress',{...this.state,force:true});
       const serial=this.loadedSerial;this.loading=true;this.loadError=false;
+      this.audioMonitor?.reset(media.technical||{tracks:[]});
       this.state={active:true,mediaId:media.id,title:media.title,position:0,duration:media.technical?.durationSeconds||media.duration*60||0,paused:false,tracks:[]};this.emit('state',{...this.state});
       try{
         await this.command(['set_property','user-data/luma-osc/media',{...media,path:media.displayPath||media.path}]);
@@ -128,7 +141,7 @@ class MpvPlayer extends EventEmitter {
         this.state.tracks=await this.command(['get_property','track-list']);
         let output;
         while(!output?.w){if(this.loadError||this.child!==child||child.exitCode!==null||Date.now()>deadline)throw new Error('下一集未输出画面。');output=await this.command(['get_property','video-out-params']).catch(()=>null);if(!output?.w)await new Promise(r=>setTimeout(r,100));}
-        this.loading=false;await this.command(['set_property','pause',false]);this.state.paused=false;this.emit('state',{...this.state});return this.state;
+        this.loading=false;await this.command(['set_property','pause',false]);await this.audioMonitor?.refresh();this.state.paused=false;this.emit('state',{...this.state});return this.state;
       }catch(error){this.loading=false;if(this.child===child&&child.exitCode===null){this.finishedMediaId=previous.mediaId;this.state={...previous,paused:true,error:'下一集未能打开，已停止连播。'};this.emit('state',{...this.state});}throw error;}
     });this.opening=operation;return operation;
   }
@@ -142,18 +155,23 @@ class MpvPlayer extends EventEmitter {
     });
   }
   async control(action,value) {
+    if(action==='audio-pcm')return this.audioMonitor?.recover();
+    if(action==='audio-default')return this.audioMonitor?.recover(true);
     if(action==='pause') return this.command(['set_property','pause',Boolean(value)]);
     if(action==='seek' && Number.isFinite(value) && value>=0) return this.command(['seek',value,'absolute']);
-    if(['aid','sid'].includes(action) && (value==='no'||Number.isInteger(value))) return this.command(['set_property',action,value]);
+    if(['aid','sid'].includes(action) && (value==='no'||Number.isInteger(value))) {const monitor=action==='aid'?this.audioMonitor:null;monitor?.select(value);await this.command(['set_property',action,value]);await monitor?.refresh();return;}
     if(action==='stop') return this.stop();
     throw new Error('无效的播放器操作。');
   }
   async stop() {
+    this.audioMonitor?.stop();
     const child=this.child;
     if(!child)return;
+    this.stopping=true;
     this.emit('progress',{...this.state,force:true});
     try { await this.command(['quit']); } catch { child.kill(); }
-    if(child.exitCode===null) await Promise.race([new Promise(r=>child.once('exit',r)),new Promise(r=>setTimeout(()=>{child.kill();r();},2000))]);
+    if(child.exitCode===null)await new Promise(resolve=>{const done=()=>{clearTimeout(timer);resolve();},timer=setTimeout(()=>{child.kill();resolve();},2000);child.once('exit',done);if(child.exitCode!==null)done();});
+    this.stopping=false;
   }
 }
 module.exports={MpvPlayer};

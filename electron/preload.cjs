@@ -39,6 +39,7 @@ contextBridge.exposeInMainWorld('desktop', {
   cancelTasks: () => ipcRenderer.invoke('tasks:cancel'),
   taskStatus: () => ipcRenderer.invoke('tasks:status'),
   playerState: () => ipcRenderer.invoke('player:state'),
+  audioDevices: () => ipcRenderer.invoke('player:audio-devices'),
   playerControl: (action, value) => ipcRenderer.invoke('player:control', action, value),
   onLibraryChanged: callback => subscribe('library:changed', callback),
   onTasksChanged: callback => subscribe('tasks:changed', callback),

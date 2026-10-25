@@ -37,7 +37,9 @@ try{
   await page.getByRole('dialog',{name:/^剧集 /}).getByRole('button',{name:'关闭',exact:true}).click();
   await page.evaluate(async folder=>{
     await window.desktop.saveSettings({...await window.desktop.loadSettings(),watchFolders:false,autoScrape:false,defaultPlayer:'native',autoplay:true});
-    const result=await window.desktop.scanFolder(folder,'local'),base=result.media[0];
+    const result=await window.desktop.scanFolder(folder,'local');
+    // Browser playback now requires verified compatible audio/video; unknown streams deliberately use mpv.
+    const base=await window.desktop.probeMedia(result.media[0].id);
     await window.desktop.saveLibrary({demo:false,sources:[result.source],media:[[1,1,'browser-a'],[1,2,'browser-b'],[2,1,'browser-c']].map(([season,episodeNumber,id])=>({...base,id,metadataOrigin:'manual',metadataStatus:'matched',kind:'tv',title:'浏览器连播验证',seriesTitle:'浏览器连播验证',seriesOriginalTitle:'Browser episode checks',seriesYear:2025,season,episodeNumber,episode:`第 ${season} 季 · 第 ${episodeNumber} 集`,watched:false,progress:0}))});
   },path.dirname(movie.path));
   await page.reload();await page.waitForFunction(()=>document.documentElement.dataset.lumaReady==='true');await page.getByRole('button',{name:'电视剧',exact:true}).click();await page.locator('.poster-art').first().click();assert.equal(await page.locator('.season-card').count(),2);await page.getByRole('button',{name:'查看第 1 季',exact:true}).click();await page.getByRole('button',{name:'播放第 1 集',exact:true}).click();

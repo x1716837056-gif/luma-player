@@ -25,3 +25,5 @@ ffprobe Windows 构建来源：https://github.com/BtbN/FFmpeg-Builds/releases �
 React、Electron、Vite、Lucide、字体等原有依赖及素材声明继续见 README.md 和 public/OFL.txt。
 
 本次未将 electron-mpv-video / electron-libmpv 加入生产依赖：它们需要独立的原生编译和渲染验证，前者当前文档的集成还要求改变 sandbox 设置。现在采用 mpv 官方进程控制接口，保留现有 Electron sandbox、contextIsolation 与文件访问边界。播放仍是独立 mpv 窗口，不是内嵌 libmpv。
+
+家庭影院音频复用上述 mpv 及其已链接的 FFmpeg：WASAPI、PCM 解码与 IEC 61937 原码传输，不额外下载编解码包或引入新的原生依赖。Jellyfin Desktop / Kodi 仅作为配置与设备处理的设计参考，没有复制其播放器代码；选择、原始依据和物理接收验证边界见 [AUDIO-OUTPUT.md](AUDIO-OUTPUT.md)。

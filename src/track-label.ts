@@ -10,3 +10,5 @@ export function trackName(track:{title?:string;lang?:string;language?:string;id?
   const title=track.title?.trim();
   return [language,title && title.toLowerCase()!==language.toLowerCase()?title:''].filter(Boolean).join(' · ') || `${kind==='audio'?'音轨':'字幕'} ${track.id??((track.index??0)+1)}`;
 }
+
+export function trackFormat(track:{codec?:string;codecProfile?:string;channels?:number;'demux-channel-count'?:number;sampleRate?:number;bitDepth?:number}){return [track.codecProfile||track.codec?.toUpperCase(),(track.channels||track['demux-channel-count'])?`${track.channels||track['demux-channel-count']} 声道`:'',track.sampleRate?`${track.sampleRate/1000} kHz`:'',track.bitDepth?`${track.bitDepth} bit`:''].filter(Boolean).join(' · ');}

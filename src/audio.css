@@ -1,0 +1,16 @@
+.playback-audio-settings{margin-top:26px;padding-top:24px;border-top:1px solid var(--border)}
+.playback-audio-settings h2{display:flex;gap:9px;align-items:center;font-size:15px;font-weight:550;margin:0 0 14px}
+.playback-audio-settings>select{width:100%;height:37px;border:1px solid #ffffff13;border-radius:6px;background:#18191d;color:#bcbcc5;padding:0 10px;font-size:11px;outline-offset:2px}
+html[data-theme=light] .playback-audio-settings>select{background:#fff;border-color:#25252d19;color:#565660}
+.audio-device-heading{display:flex;justify-content:space-between;align-items:center;margin:22px 0 10px}.audio-device-heading .field-label{margin:0}.audio-device-heading button{font-size:10px;gap:6px}
+.audio-codecs{display:grid;grid-template-columns:1fr 1fr;gap:2px 12px}.audio-codecs .settings-check{font-size:11px;line-height:1.6;margin-top:10px}
+.audio-track-format{display:block;margin-top:4px;font-size:10px;color:var(--muted);line-height:1.5}
+.mpv-panel .audio-output-status{font-size:9px;color:var(--muted);position:relative;max-width:100%;margin-top:5px}
+.mpv-panel .audio-output-status>button{display:block;width:100%;height:14px;min-height:0;border:0;border-radius:0;padding:0;background:none;font-size:9px;line-height:14px;text-align:left;color:var(--gold);white-space:nowrap;text-overflow:ellipsis;overflow:hidden}
+.audio-output-status>button>span{margin-left:8px;color:var(--muted)}.mpv-panel .audio-output-status.warning>button{color:#ca9356}
+.mpv-panel .audio-status-popover{position:absolute;left:0;bottom:calc(100% + 12px);width:min(420px,calc(100vw - 36px));max-height:min(340px,calc(100dvh - 180px));overflow:auto;transform:translateX(var(--popover-shift,0px));border:1px solid var(--border);border-radius:12px;background:var(--surface);color:var(--text);padding:16px;font-size:11px;margin:0;z-index:80}
+.audio-output-status p{line-height:1.8}.audio-output-status dl{display:grid;grid-template-columns:70px minmax(0,1fr);gap:9px;margin:13px 0;line-height:1.6}.audio-output-status dd{margin:0;overflow-wrap:anywhere}
+.audio-recovery-actions{display:flex;gap:10px;flex-wrap:wrap}.mpv-panel .audio-recovery-actions button{width:auto;height:auto;min-height:32px;border:1px solid var(--border);border-radius:7px;padding:7px 10px;color:var(--gold);font-size:11px}
+.audio-output-status:has([role=dialog])::after{content:'';position:absolute;left:0;right:0;bottom:100%;height:12px}
+@media(max-width:650px){.audio-codecs{grid-template-columns:1fr}.audio-output-status>button>span{display:none}.audio-output-status dl{grid-template-columns:60px minmax(0,1fr)}.mpv-panel-row{grid-template-columns:minmax(0,1fr) 44px auto;gap:8px}}
+.app-shell:has(.settings-modal) .library-taskbar{visibility:hidden}

@@ -64,7 +64,7 @@ export type Media = {
   recognitionMessage?:string;
   metadataError?: string;
   probeError?: string;
-  technical?: { container?: string; videoCodec?: string; width?: number; height?: number; hdr: boolean; colorTransfer?: string; durationSeconds: number; tracks: {index: number; type: string; codec?: string; language?: string; title?: string; channels?: number}[]; probedAt: number };
+  technical?: { container?: string; videoCodec?: string; width?: number; height?: number; hdr: boolean; colorTransfer?: string; durationSeconds: number; tracks: {index: number; type: string; codec?: string; codecProfile?:string;channelLayout?:string;sampleRate?:number;bitDepth?:number;language?: string; title?: string; channels?: number}[]; probedAt: number };
 };
 
 export type Source = {
@@ -86,10 +86,13 @@ export type CloudProgress={accountId:string;folder:string;phase:'scanning'|'comp
 export type PersonalPatch=Pick<Partial<Media>,'favorite'|'watchlist'|'personalRating'|'notes'|'collectionName'>;
 export type DuplicateStatus={running:boolean;phase:string;total:number;checked:number;bytesRead:number;bytesTotal:number;groups:{hash:string;size:number;files:{id:string;title:string;path:string;size:number}[]}[];errors:{id?:string;message:string}[]};
 export type ColorMapping = {output:'auto'|'sdr'|'hdr';curve:'auto'|'spline'|'bt.2390'|'bt.2446a'|'st2094-40'|'st2094-10';peakNits:number;dynamicPeak:boolean};
-export type Settings = { theme: 'dark' | 'light'; tmdbToken: string; metadataLanguage: string; autoplay: boolean; defaultPlayer: 'auto' | 'native' | 'mpv'; mpvPath: string; autoScrape: boolean; watchFolders: boolean; colorMapping?:ColorMapping; };
+export type AudioOutput={mode:'auto'|'pcm'|'hdmi';device:string;channels:'system'|'stereo'|'5.1'|'7.1';codecs:string[];fallback:boolean};
+export type AudioDevice={name:string;description:string};
+export type AudioStatus={status:string;passthrough:boolean;encoded:boolean;expected:boolean;fallback:boolean;downmixed:boolean;resampled?:boolean;coreOnly?:boolean;sourceBitDepth?:number;sourceCodec:string;sourceLabel:string;sourceChannels?:number;sourceRate?:number;outputFormat?:string;outputChannels?:number;outputLayout?:string;outputRate?:number;driver:string;device:string;deviceLabel:string;message:string};
+export type Settings = { theme: 'dark' | 'light'; tmdbToken: string; metadataLanguage: string; autoplay: boolean; defaultPlayer: 'auto' | 'native' | 'mpv'; mpvPath: string; autoScrape: boolean; watchFolders: boolean; colorMapping?:ColorMapping;audioOutput?:AudioOutput; };
 export type ScanResult = { media: Media[]; source: Source; warnings: string[] };
 export type TaskStatus = { running: boolean; completed: number; total: number; matched: number; review: number; failed: number; queued: number; active?: number; probeActive?:number;artworkActive?:number;artworkQueued?:number;error?:string };
-export type PlayerState = { active: boolean; error?: string; notice?:string; mediaId?: string; title?: string; position?: number; duration?: number; paused?: boolean; tracks?: {id: number; type: string; title?: string; lang?: string; selected?: boolean}[] };
+export type PlayerState = { active: boolean; error?: string; notice?:string; audio?:AudioStatus;mediaId?: string; title?: string; position?: number; duration?: number; paused?: boolean; tracks?: {id: number; type: string; codec?:string;'demux-channel-count'?:number;title?: string; lang?: string; selected?: boolean}[] };
 
 declare global {
   interface Window {
@@ -128,7 +131,8 @@ declare global {
       cancelTasks(): Promise<void>;
       taskStatus(): Promise<TaskStatus>;
       playerState(): Promise<PlayerState>;
-      playerControl(action: 'pause' | 'seek' | 'aid' | 'sid' | 'stop' | 'next', value?: number | boolean | 'no'): Promise<void>;
+      audioDevices():Promise<AudioDevice[]>;
+      playerControl(action: 'pause' | 'seek' | 'aid' | 'sid' | 'stop' | 'next' | 'audio-pcm' | 'audio-default', value?: number | boolean | 'no'): Promise<void>;
       onLibraryChanged(callback: (library: Library) => void): () => void;
       onTasksChanged(callback: (status: TaskStatus) => void): () => void;
       onPlayerChanged(callback: (state: PlayerState) => void): () => void;

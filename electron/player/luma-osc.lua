@@ -93,6 +93,8 @@ local function icon(name, x, y, s, a)
         text(x+12*s,y+14*s,'10',8*s,a,5,true)
     end
 end
+local function bitstream() return tostring(prop('audio-out-params',{}).format or ''):match('^spdif')~=nil end
+local function receiver_volume() mp.osd_message('源码直通：请在功放上调节音量',2) end
 local function activity() last_activity = mp.get_time() end
 local function toggle_menu(kind) menu = menu == kind and nil or kind; page = 0; menu_leave_at=nil; activity() end
 local function back() if menu=='color-curve' or menu=='color-peak' then menu='color';page=0 elseif menu then menu=nil elseif prop('fullscreen') then mp.set_property_native('fullscreen',false) else mp.commandv('quit') end;activity() end
@@ -106,6 +108,11 @@ local function track_label(t)
 end
 local function info_lines()
     local media=prop('user-data/luma-osc/media',{})
+    if menu=='audio-output' then
+        local a=prop('user-data/luma-osc/audio-status',{})
+        local state=a.status=='passthrough' and '源码直通 · WASAPI' or a.status=='test' and '测试空输出' or a.status=='pcm' and 'PCM 输出' or '音频未连接'
+        return {state,'',a.message or '正在读取输出状态…','','源音轨  '..tostring(a.sourceLabel or '未知')..' · '..tostring(a.sourceChannels or '?')..' 声道','源采样率  '..tostring(a.sourceRate or '?')..' Hz','实际格式  '..tostring(a.outputFormat or '未连接'),'输出采样率  '..tostring(a.outputRate or '?')..' Hz'..(a.encoded and '（编码载波）' or ''),'PCM 布局  '..(not a.encoded and tostring(a.outputLayout or '未知') or '编码流由功放解码'),'所选设备  '..tostring(a.deviceLabel or '系统默认设备'),'','此页表示播放器交给音频设备的格式；Atmos / DTS:X 接收状态请同时核对功放显示。'}
+    end
     if menu=='overview' then
         return {media.description or '暂无影片简介，请先在影音库匹配资料。','', '导演  '..(media.director or '暂无资料'), '类型  '..table.concat(media.genre or {},' / '), '演职人员  '..table.concat(media.cast or {},' / ')}
     end
@@ -151,13 +158,14 @@ end
 local function menu_rows()
     local rows = {}
     if menu == 'speed' then
+        if bitstream() then return {{label='源码直通固定正常速度',heading=true}} end
         for _, rate in ipairs({.5,.75,1,1.25,1.5,2}) do
             local value=rate
             rows[#rows+1]={label=rate==1 and '正常速度' or rate..'×',selected=prop('speed',1)==rate,click=function() mp.set_property_number('speed',value);menu=nil end}
         end
     elseif menu=='audio' then
         for _, t in ipairs(prop('track-list',{})) do
-            if t.type=='audio' then local id=t.id;rows[#rows+1]={label=track_label(t),selected=t.selected,click=function() mp.set_property_number('aid',id);menu=nil end} end
+            if t.type=='audio' then local id=t.id;rows[#rows+1]={label=string.upper(t.codec or '')..(t['demux-channel-count'] and ' · '..t['demux-channel-count']..'ch' or '')..' · '..track_label(t),selected=t.selected,click=function() mp.set_property_number('aid',id);menu=nil end} end
         end
         if #rows==0 then rows[#rows+1]={label='没有可切换的音轨',heading=true} end
     elseif menu=='subtitles' then
@@ -170,6 +178,9 @@ local function menu_rows()
         rows[#rows+1]={label='片源信息',click=function()menu='source';page=0 end}
         rows[#rows+1]={label='画面异常？使用兼容解码',click=function() mp.set_property('hwdec','no');menu=nil;mp.osd_message('已切换兼容解码',2) end}
         rows[#rows+1]={label='画面与 HDR',click=function()menu='color';page=0 end}
+        rows[#rows+1]={label='音频输出状态',click=function()menu='audio-output';page=0 end}
+        rows[#rows+1]={label='声音异常？兼容 PCM 重试',click=function()menu=nil;mp.commandv('script-message','luma-audio-recover')end}
+        rows[#rows+1]={label='改用系统默认音频输出',click=function()menu=nil;mp.commandv('script-message','luma-audio-default')end}
         if prop('user-data/luma-osc/next-title','')~='' then rows[#rows+1]={label='播放下一集',click=function()menu=nil;mp.commandv('script-message','luma-next-episode')end} end
     elseif menu=='color' then
         local trc=prop('target-trc','auto')
@@ -199,7 +210,7 @@ local function render()
     local margin=W<440 and 16 or W<650 and 24 or 32
     panel={x=math.max(margin,(W-1120)/2),y=H-114,w=math.min(1120,W-margin*2),h=90}
     local now=mp.get_time()
-    if menu and menu~='overview' and menu~='source' then
+    if menu and menu~='overview' and menu~='source' and menu~='audio-output' then
         local trigger=nil
         for _,item in ipairs(elements) do if item.id==menu then trigger=item;break end end
         local bridge=trigger and menu_box and my>=menu_box.y+menu_box.h and my<=trigger.y and mx>=math.min(trigger.x,menu_box.x) and mx<=math.max(trigger.x+trigger.w,menu_box.x+menu_box.w)
@@ -232,9 +243,10 @@ local function render()
     local center=narrow and x+22 or x+w/2
     local row=y+44
     if not narrow then
-        button('volume',x,row,40,40,function()mp.commandv('cycle','mute')end,'静音');icon('volume',x+11,row+11,.75,20)
+        button('volume',x,row,40,40,function()if bitstream() then receiver_volume() else mp.commandv('cycle','mute') end end,bitstream() and '功放音量' or '静音');icon('volume',x+11,row+11,.75,20)
     end
-    if W>=760 then
+    if W>=760 and bitstream() then text(x+48,row+20,'功放音量',11,80) end
+    if W>=760 and not bitstream() then
         local v=button('volume-slider',x+44,row+7,72,26,nil,'音量');v.slider='volume'
         rect(v.x,v.y+11,v.w,3,1.5,'FFFFFF',205);rect(v.x,v.y+11,v.w*clamp(prop('volume',100)/100,0,1),3,1.5,'FFFFFF',45)
     end
@@ -263,7 +275,7 @@ local function render()
     text(x,y+27,clock(position),11,80)
     text(x+w,y+27,'−'..clock(duration-position),11,80,6)
     if prop('pause') then text(x+w/2,y+27,'已暂停',10,130,5) end
-    if menu=='overview' or menu=='source' then
+    if menu=='overview' or menu=='source' or menu=='audio-output' then
         local media=prop('user-data/luma-osc/media',{})
         local mw=math.min(640,W-40)
         local lines=wrap_lines(info_lines(),math.floor((mw-48)/7.2))
@@ -274,7 +286,7 @@ local function render()
         local bx,by=(W-mw)/2,math.max(20,(H-mh)/2)
         menu_box={x=bx,y=by,w=mw,h=mh}
         rect(bx-1,by-1,mw+2,mh+2,23,'FFFFFF',219);rect(bx,by,mw,mh,22,'27272D',10)
-        text(bx+26,by+26,menu=='overview' and '影片简介' or '片源信息',10,125)
+        text(bx+26,by+26,menu=='overview' and '影片简介' or menu=='audio-output' and '音频输出状态' or '片源信息',10,125)
         text(bx+26,by+56,media.title or prop('media-title'),20,0,4,true,mw-84)
         button('info-close',bx+mw-48,by+16,30,30,function()menu=nil end,'关闭影片信息');icon('close',bx+mw-43,by+21,.8,90)
         for index=first,last do text(bx+26,by+98+(index-first)*24,lines[index],13,35,4,false,mw-52) end
@@ -350,7 +362,7 @@ mp.add_forced_key_binding('MOUSE_MOVE','luma-move',function()
     activity();local m=prop('mouse-pos',{});mx,my=(m.x or -1)/scale,(m.y or -1)/scale
     if drag and pressed then slider(pressed) end
 end)
-mp.add_forced_key_binding('MOUSE_LEAVE','luma-leave',function()mx,my=-1,-1;if menu~='overview' and menu~='source' then menu=nil end end)
+mp.add_forced_key_binding('MOUSE_LEAVE','luma-leave',function()mx,my=-1,-1;if menu~='overview' and menu~='source' and menu~='audio-output' then menu=nil end end)
 mp.add_forced_key_binding('MBTN_RIGHT','luma-context',function()
     local mouse=prop('mouse-pos',{});context_at={x=(mouse.x or 0)/scale,y=(mouse.y or 0)/scale};page=0;menu_leave_at=nil;menu=menu=='context' and nil or 'context';activity();render()
 end)
@@ -364,6 +376,8 @@ mp.add_key_binding('MBTN_LEFT','luma-background-click',function()if menu then me
 mp.register_script_message('luma-show',function()activity();render()end)
 mp.register_event('file-loaded',activity)
 mp.register_event('shutdown',function()pcall(mp.set_property_number,'sub-margin-y-offset',subtitle_offset)end)
+mp.observe_property('speed','number',function(_,value)if bitstream() and value~=1 then mp.set_property_number('speed',1);mp.osd_message('源码直通固定正常速度；如需变速请使用 PCM 模式',2) end end)
+mp.observe_property('volume','number',function(_,value)if bitstream() and value~=100 then mp.set_property_number('volume',100);receiver_volume() end end)
 mp.observe_property('pause','bool',function()activity()end)
 mp.set_property_native('user-data/luma-osc/loaded',true)
 mp.add_periodic_timer(1/30,render)

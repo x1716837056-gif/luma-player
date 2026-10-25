@@ -15,6 +15,8 @@ try {
   if(movie){
     await page.evaluate(async folder=>{await window.desktop.saveSettings({...await window.desktop.loadSettings(),autoScrape:false,watchFolders:false,defaultPlayer:'native'});await window.desktop.scanFolder(folder,'local');},path.dirname(movie.path));
     await page.waitForFunction(async()=>Boolean((await window.desktop.loadLibrary()).media.find(m=>m.technical)),null,{timeout:30000});
+    // Offline UI acceptance explicitly trusts controlled metadata; online scraping is tested separately.
+    await page.evaluate(async()=>{const l=await window.desktop.loadLibrary();await window.desktop.saveLibrary({...l,media:l.media.map(m=>({...m,metadataOrigin:'manual',metadataStatus:'matched'}))});});
     await page.reload();await page.waitForFunction(()=>document.documentElement.dataset.lumaReady==='true');
     await page.locator('.poster-card').first().click();await page.getByRole('button',{name:'立即播放',exact:true}).click();
   }else await page.locator('.hero .play-button').click();

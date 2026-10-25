@@ -10,6 +10,8 @@ const { LibraryService } = require('./library-service.cjs');
 const { MpvPlayer } = require('./mpv.cjs');
 const { probeMedia,toolPath } = require('./probe.cjs');
 const { normalizeColorMapping } = require('./color-mapping.cjs');
+const {normalizeAudioOutput}=require('../shared/audio.mjs');
+const {readAudioDevices,deviceList}=require('./audio-output.cjs');
 const {EpisodePlayback}=require('./episode-playback.cjs');
 const {DuplicateScanner}=require('./duplicates.cjs');
 const {shouldRestart}=require('../shared/movies.mjs');
@@ -99,7 +101,7 @@ function wireIpc() {
   ipcMain.handle('duplicates:cancel',()=>duplicates.cancel());
   ipcMain.handle('settings:save',async (_,next)=>{
     if(!next || typeof next.tmdbToken!=='string' || typeof next.mpvPath!=='string' || !['auto','native','mpv'].includes(next.defaultPlayer))throw new Error('设置格式无效。');
-    next={...next,colorMapping:normalizeColorMapping(next.colorMapping)};
+    next={...next,colorMapping:normalizeColorMapping(next.colorMapping),audioOutput:normalizeAudioOutput(next.audioOutput)};
     next.autoplay=next.autoplay!==false;
     const previous=settings;
     const persisted={...next,theme:next.theme==='light'?'light':'dark'};
@@ -129,6 +131,10 @@ function wireIpc() {
   ipcMain.handle('tasks:cancel',()=>service.cancel());
   ipcMain.handle('tasks:status',()=>service.status());
   ipcMain.handle('player:state',()=>player.state);
+  ipcMain.handle('player:audio-devices',async()=>{
+    if(player.state.active&&player.socket)return deviceList(await player.command(['get_property','audio-device-list']));
+    const executable=toolPath('mpv',settings.mpvPath);if(!executable)throw Error('未找到 mpv，无法读取音频设备。');return readAudioDevices(executable);
+  });
   ipcMain.handle('player:control',(_,action,value)=>{if(action==='next')return episodePlayback.advance(false);if(action==='stop')episodePlayback.cancel();return player.control(action,value);});
   ipcMain.handle('media:probe',async (_,id)=>{
     const media=currentMedia(id);return service.patch(id,await probeMedia(await cloud.input(media)));
@@ -143,7 +149,7 @@ function wireIpc() {
     const executable=toolPath('mpv',settings.mpvPath);
     if(!executable)throw new Error('未找到 mpv，请在播放设置中指定 mpv.exe。');
     const replay=restart===true||shouldRestart(actual);
-    const state=await episodePlayback.open(executable,replay?{...actual,progress:0}:actual,{colorMapping:settings.colorMapping,audioOutput:process.env.LUMA_TEST_AUDIO_OUTPUT==='null'?'null':undefined});
+    const state=await episodePlayback.open(executable,replay?{...actual,progress:0}:actual,{colorMapping:settings.colorMapping,audioSettings:settings.audioOutput,audioOutput:process.env.LUMA_TEST_AUDIO_OUTPUT==='null'?'null':undefined});
     if(replay&&state.active&&state.mediaId===actual.id)service.patch(actual.id,{watched:false,watchedMarkedAt:0,progress:0});return state;
   });
   ipcMain.on('window:action',(_,action)=>{

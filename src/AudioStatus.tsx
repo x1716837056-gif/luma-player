@@ -1,0 +1,9 @@
+import {useRef,useState} from 'react';
+import {usePopoverDismiss} from './usePopoverDismiss';
+import type {AudioStatus as Status} from './types';
+export function AudioStatus({audio,onRecover}:{audio?:Status;onRecover:(useDefault:boolean)=>void}){
+  const [open,setOpen]=useState(false),ref=useRef<HTMLDivElement>(null);usePopoverDismiss(open,ref,()=>setOpen(false));
+  if(!audio)return null;
+  const label=audio.status==='passthrough'?'源码直通':audio.status==='pcm'?'PCM 输出':audio.status==='test'?'测试空输出':audio.status==='disabled'?'音轨关闭':audio.status==='no-track'?'无音轨':'音频未连接';
+  return <div ref={ref} onKeyDown={e=>{if(e.key==='Escape'){e.preventDefault();e.stopPropagation();setOpen(false);ref.current?.querySelector('button')?.focus();}}} className={'audio-output-status '+(audio.fallback||audio.downmixed||audio.resampled||audio.coreOnly||audio.status==='unavailable'||audio.expected&&!audio.passthrough?'warning':'')}><button type="button" aria-label="音频输出状态" aria-expanded={open} onClick={()=>setOpen(!open)}>{label}<span>{audio.sourceLabel}{audio.sourceChannels?` · ${audio.sourceChannels} 声道`:''}</span></button>{open&&<div className="cinema-menu audio-status-popover" role="dialog" aria-label="音频输出状态"><p>{audio.message}</p><dl><dt>源音轨</dt><dd>{audio.sourceLabel||'—'} · {audio.sourceRate?`${audio.sourceRate/1000} kHz`:'采样率未知'}{audio.sourceBitDepth?` · ${audio.sourceBitDepth} bit`:''}</dd><dt>实际输出</dt><dd>{audio.driver||'未连接'} · {audio.outputFormat||'—'} · {audio.outputRate?`${audio.outputRate/1000} kHz${audio.encoded?' 载波':''}`:'—'}{!audio.encoded&&audio.outputLayout?` · ${audio.outputLayout}`:''}</dd><dt>所选设备</dt><dd>{audio.deviceLabel}</dd></dl><div className="audio-recovery-actions"><button onClick={()=>onRecover(false)}>兼容 PCM 重试</button><button onClick={()=>onRecover(true)}>改用系统默认输出</button></div></div>}</div>;
+}

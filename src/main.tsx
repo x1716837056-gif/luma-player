@@ -12,5 +12,6 @@ import './series.css';
 import './management.css';
 import './connections.css';
 import './recognition.css';
+import './audio.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><App /></React.StrictMode>);

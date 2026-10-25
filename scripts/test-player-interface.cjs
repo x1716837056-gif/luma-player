@@ -32,7 +32,7 @@ async function until(check){const deadline=Date.now()+10000;while(!await check()
     await player.command(['set_property','geometry',initial.w+'x'+initial.h]);await delay(1000);await player.command(['script-message','luma-show']);await delay(100);
     const sizes=(await layout()).buttons;
     for(const id of ['speed','audio','subtitles','fullscreen'])assert.deepEqual([sizes[id].w,sizes[id].h],[40,40]);
-    await click('speed');await menuIs('speed');await above('speed');await screenshot('mpv-speed-menu.png');await click('row-5');assert.equal(await get('speed'),1.5);await player.command(['set_property','speed',1]);
+    await click('speed');await menuIs('speed');await above('speed');await screenshot('mpv-speed-menu.png');await click('row-5');await until(async()=>await get('speed')===1.5);assert.equal(await get('speed'),1.5);await player.command(['set_property','speed',1]);
     const audio=player.state.tracks.filter(t=>t.type==='audio'),subs=player.state.tracks.filter(t=>t.type==='sub');
     const sid=await get('sid');await click('audio');await menuIs('audio');await above('audio');await screenshot('mpv-audio-menu.png');
     if(audio.length){await click('row-'+audio.length);await until(async()=>await get('aid')===audio.at(-1).id);}else await player.command(['keypress','ESC']);
@@ -43,10 +43,11 @@ async function until(check){const deadline=Date.now()+10000;while(!await check()
     await point(l.width/2,l.height/3);await player.command(['keypress','MBTN_RIGHT']);await menuIs('context');await click('row-1');await menuIs('overview');await screenshot('mpv-overview.png');
     await player.command(['keypress','Alt+LEFT']);await menuIs(false);assert.ok(player.state.active);
     await player.command(['keypress','MBTN_RIGHT']);await menuIs('context');await click('row-2');await menuIs('source');await screenshot('mpv-source-info.png');await click('back');await menuIs(false);assert.ok(player.state.active);
+    await player.command(['keypress','MBTN_RIGHT']);await menuIs('context');await click('row-5');await menuIs('audio-output');await screenshot('mpv-audio-output.png');await player.command(['keypress','ESC']);await menuIs(false);
     await player.command(['keypress','MBTN_RIGHT']);await menuIs('context');await click('row-4');await menuIs('color');await screenshot('mpv-color-menu.png');await click('row-2');assert.equal(await get('target-trc'),'srgb');assert.equal(await get('target-peak'),'auto');
     await player.command(['keypress','MBTN_RIGHT']);await menuIs('context');await click('row-4');await menuIs('color');await click('row-3');assert.equal(await get('target-trc'),'pq');
     await player.command(['keypress','MBTN_RIGHT']);await menuIs('context');await click('row-4');await menuIs('color');await click('row-5');await menuIs('color-peak');await click('row-3');assert.equal(await get('target-peak'),600);
-    await player.command(['keypress','MBTN_RIGHT']);await menuIs('context');await click('row-4');await menuIs('color');await click('row-2');assert.equal(await get('target-peak'),'auto');
+    await player.command(['keypress','MBTN_RIGHT']);await menuIs('context');await click('row-4');await menuIs('color');await click('row-2');await until(async()=>await get('target-trc')==='srgb');assert.equal(await get('target-peak'),'auto');
     await player.command(['keypress','MBTN_RIGHT']);await menuIs('context');await click('row-4');await menuIs('color');await click('row-4');await menuIs('color-curve');await click('row-3');assert.equal(await get('tone-mapping'),'bt.2390');
     await player.command(['keypress','MBTN_RIGHT']);await menuIs('context');await click('row-4');await menuIs('color');await click('row-5');await menuIs('color-peak');await player.command(['keypress','ESC']);await menuIs('color');await player.command(['keypress','ESC']);await menuIs(false);
     await player.command(['keypress','MBTN_RIGHT']);await menuIs('context');await click('row-4');await menuIs('color');await click('row-1');assert.equal(await get('target-trc'),'auto');assert.equal(await get('target-peak'),'auto');
