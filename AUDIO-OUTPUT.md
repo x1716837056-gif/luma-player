@@ -1,4 +1,4 @@
-# 家庭影院音频与可靠性（0.1.5 开发版）
+# 家庭影院音频与可靠性（0.1.6）
 
 ## 项目选择
 
@@ -39,4 +39,4 @@
 - `tests/audio-output.test.cjs` 检查参数校验、PCM / 编码 / null 区分、载波与源参数、降级提示、严格模式、端点丢失、单次恢复、取消与换集保护。
 - `scripts/smoke-audio.mjs` 使用授权真实片源和临时配置，关闭刮削 / 监视：AAC 立体声、TrueHD 7.1 / 48kHz PCM，TrueHD / DTS-HD / EAC3 / AC3 编码载波送到 null，音轨切换 / 速度 / 音量 / PCM 恢复 / UI 持久化；另以失效端点和静音的系统设备检查错误恢复与 IPC 断连。null 验证编码输出链路，不代表 HDMI 硬件直通认证或听音测试。
 
-当前测试机只发现普通 WASAPI 扬声器，没有 HDMI 功放。真实功放接收 TrueHD/Atmos、DTS-HD/DTS:X、实际热插拔、锁定耗时、长片音画同步和全部物理声道听音仍待接入家庭影院验收。提供的真实片源包含 TrueHD/Atmos、DTS-HD MA、DD+/AC3 和 AAC；没有把未提供的 DTS:X / FLAC / ALAC 实片冒充已验证。本次保持 0.1.5 开发版，仅同步源码 / 本地预览，不发布安装包。
+当前测试机只发现普通 WASAPI 扬声器，没有 HDMI 功放。真实功放接收 TrueHD/Atmos、DTS-HD/DTS:X、实际热插拔、锁定耗时、长片音画同步和全部物理声道听音仍待接入家庭影院验收。提供的真实片源包含 TrueHD/Atmos、DTS-HD MA、DD+/AC3 和 AAC；没有把未提供的 DTS:X / FLAC / ALAC 实片冒充已验证。此功能随 Luma 0.1.6 发布；源码载波与静音 WASAPI 恢复验证不等同于功放接收或听音验收。

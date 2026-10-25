@@ -1,6 +1,6 @@
 {
   "name": "luma-player",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "A cinematic Windows player for your local and NAS library",
   "private": true,
   "type": "module",
